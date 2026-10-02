@@ -1,0 +1,10 @@
+{
+  "licenses": [
+    {
+      "userTier": "gcp-ge-standard-tier",
+      "tierDisplayName": "Gemini Enterprise Standard",
+      "projectId": "example-enterprise",
+      "location": "us"
+    }
+  ]
+}
