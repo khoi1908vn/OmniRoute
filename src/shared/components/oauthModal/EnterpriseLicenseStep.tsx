@@ -68,6 +68,7 @@ export default function EnterpriseLicenseStep({
       const data = await enterpriseSetupAction("licenses", setup.setupId);
       setEmail(data.email);
       acceptLicenses(data.licenses);
+      if (data.discoveryError) setError(data.discoveryError);
     } catch (error) {
       setError(error instanceof Error ? error.message : "License discovery failed");
     } finally {
@@ -91,7 +92,10 @@ export default function EnterpriseLicenseStep({
         action === "finalize" ? { licenseId: selected } : { projectId: project.trim() }
       );
       if (data.status === "completed") onSaved();
-      else acceptLicenses(data.licenses);
+      else {
+        acceptLicenses(data.licenses);
+        setSelected(data.verifiedLicenseId);
+      }
     } catch (error) {
       setError(error instanceof Error ? error.message : "Enterprise setup failed");
     } finally {

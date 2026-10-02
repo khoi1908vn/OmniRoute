@@ -203,12 +203,25 @@ export async function handleEnterpriseOAuth(request: Request, action: string): P
           ticket.tokens.email = info.email;
           ticket.tokens.providerSpecificData.googleSubject = info.id;
         }
-        const licenses = await fetchEnterpriseLicenses(
-          ticket.tokens.accessToken,
-          ticket.controller.signal
-        );
+        // Identity is already verified; a failed catalog request must still allow
+        // the explicit custom-project recovery path.
+        let licenses: Awaited<ReturnType<typeof fetchEnterpriseLicenses>> = [];
+        let discoveryError: string | undefined;
+        try {
+          licenses = await fetchEnterpriseLicenses(
+            ticket.tokens.accessToken,
+            ticket.controller.signal
+          );
+        } catch (error) {
+          discoveryError =
+            error instanceof z.ZodError
+              ? "License discovery returned invalid data. Retry or verify a project."
+              : sanitizeErrorMessage(
+                  error instanceof Error ? error.message : "License discovery failed"
+                );
+        }
         const entries = enterprisePendingSetup.addLicenses(body.setupId, binding, licenses);
-        return NextResponse.json({ email: ticket.tokens.email, licenses: entries });
+        return NextResponse.json({ email: ticket.tokens.email, licenses: entries, discoveryError });
       }
       if (action === "verify-project" && request.method === "POST") {
         if (!body.projectId || !ticket.tokens.email)
@@ -218,8 +231,12 @@ export async function handleEnterpriseOAuth(request: Request, action: string): P
           body.projectId,
           ticket.controller.signal
         );
+        const licenses = enterprisePendingSetup.addLicenses(body.setupId, binding, [license]);
         return NextResponse.json({
-          licenses: enterprisePendingSetup.addLicenses(body.setupId, binding, [license]),
+          licenses,
+          verifiedLicenseId: licenses.find(
+            (entry) => entry.projectId === license.projectId && entry.location === license.location
+          )!.licenseId,
         });
       }
       return NextResponse.json({ error: "Unsupported Enterprise OAuth action" }, { status: 400 });

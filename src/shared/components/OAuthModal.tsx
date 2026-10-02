@@ -169,16 +169,25 @@ export default function OAuthModal({
   const [loopbackHint, setLoopbackHint] = useState<PkceLoopbackMismatchHint | null>(null);
   const [enterpriseSetup, setEnterpriseSetup] = useState<EnterpriseSetup | null>(null);
   const enterpriseSavedRef = useRef(false);
+  const enterpriseFlowRunRef = useRef(0);
+  const enterpriseTargetId = provider === "agy-enterprise" ? reauthConnection?.id : undefined;
   const openRef = useRef(isOpen);
   useEffect(() => {
     openRef.current = isOpen;
   }, [isOpen]);
+  useEffect(() => {
+    enterpriseFlowRunRef.current += 1;
+    return () => {
+      enterpriseFlowRunRef.current += 1;
+    };
+  }, [isOpen, provider, enterpriseTargetId]);
   const enterpriseSaved = useCallback(() => {
+    if (!openRef.current || authData?.enterpriseFlowRun !== enterpriseFlowRunRef.current) return;
     if (enterpriseSavedRef.current) return;
     enterpriseSavedRef.current = true;
     setStep("success");
     onSuccess?.();
-  }, [onSuccess]);
+  }, [onSuccess, authData]);
 
   const supportsTokenPaste = TOKEN_PASTE_PROVIDERS.has(provider);
   const importTokenOnly = IMPORT_TOKEN_ONLY_PROVIDERS.has(provider);
@@ -235,6 +244,11 @@ export default function OAuthModal({
   const exchangeTokens = useCallback(
     async (code, state) => {
       if (!authData) return;
+      const flowRun = authData.enterpriseFlowRun;
+      const staleEnterpriseFlow = () =>
+        provider === "agy-enterprise" &&
+        (!openRef.current || flowRun !== enterpriseFlowRunRef.current);
+      if (staleEnterpriseFlow()) return;
       try {
         if (!authData.redirectUri || !authData.codeVerifier) {
           throw new Error(t("errorSessionIncomplete"));
@@ -277,7 +291,7 @@ export default function OAuthModal({
 
         if (provider === "agy-enterprise") {
           const setup = data as unknown as EnterpriseSetup;
-          if (!openRef.current) {
+          if (staleEnterpriseFlow()) {
             await enterpriseSetupAction("cancel", setup.setupId);
             return;
           }
@@ -288,6 +302,7 @@ export default function OAuthModal({
         setStep("success");
         onSuccess?.();
       } catch (err) {
+        if (staleEnterpriseFlow()) return;
         // Provide actionable guidance for redirect_uri_mismatch on Google OAuth providers
         if (
           err.message?.toLowerCase().includes("redirect_uri_mismatch") &&
@@ -410,6 +425,7 @@ export default function OAuthModal({
   const startOAuthFlow = useCallback(
     async (opts?: { grokBrowser?: boolean; manualLoopback?: boolean }) => {
       if (!provider) return;
+      const flowRun = ++enterpriseFlowRunRef.current;
       try {
         setError(null);
 
@@ -621,6 +637,11 @@ export default function OAuthModal({
           `/api/oauth/${provider}/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`
         );
         const data = (await parseResponseBody(res)) as Record<string, unknown>;
+        if (
+          provider === "agy-enterprise" &&
+          (!openRef.current || flowRun !== enterpriseFlowRunRef.current)
+        )
+          return;
         if (!res.ok) {
           const errMsg = getErrorMessage(data, res.status, t("errorAuthorizationFailed"));
           throw new Error(errMsg);
@@ -630,7 +651,11 @@ export default function OAuthModal({
           throw new Error(errorMessageFromBody(data, t("errorBrowserUnavailable")));
         }
 
-        setAuthData({ ...data, redirectUri: data.redirectUri || redirectUri });
+        setAuthData({
+          ...data,
+          redirectUri: data.redirectUri || redirectUri,
+          enterpriseFlowRun: flowRun,
+        });
 
         // For non-true-localhost (LAN IPs, remote) or manual fallback: use manual input mode (user pastes callback URL)
         if (!isTrueLocalhost || forceManual) {
@@ -647,6 +672,11 @@ export default function OAuthModal({
           }
         }
       } catch (err) {
+        if (
+          provider === "agy-enterprise" &&
+          (!openRef.current || flowRun !== enterpriseFlowRunRef.current)
+        )
+          return;
         setError(err.message);
         setStep("error");
       }
@@ -693,7 +723,7 @@ export default function OAuthModal({
   useEffect(() => {
     deviceFlowRunRef.current += 1;
     flowStartedRef.current = false;
-  }, [provider]);
+  }, [provider, enterpriseTargetId]);
 
   // Same split when the modal closes: state reset during render, ref
   // invalidation in a ref-only effect.
@@ -724,7 +754,10 @@ export default function OAuthModal({
   // moved from the old effect into this render-time adjustment (react.dev
   // "You Might Not Need an Effect"); the flow itself starts in the effect below.
   const [prevStartKey, setPrevStartKey] = useState<string | null>(null);
-  const startKey = isOpen && provider ? String(provider) : null;
+  const startKey =
+    isOpen && provider
+      ? `${provider}${provider === "agy-enterprise" ? `:${enterpriseTargetId || "new"}` : ""}`
+      : null;
   if (startKey !== prevStartKey) {
     setPrevStartKey(startKey);
     if (startKey) {
@@ -766,7 +799,7 @@ export default function OAuthModal({
 
   // Listen for OAuth callback via multiple methods
   useEffect(() => {
-    if (!authData) return;
+    if (!isOpen || !authData) return;
     callbackProcessedRef.current = false; // Reset when authData changes
 
     // Handler for callback data - only process once
@@ -871,7 +904,7 @@ export default function OAuthModal({
       window.removeEventListener("storage", handleStorage);
       if (channel) channel.close();
     };
-  }, [authData, exchangeTokens, provider, t]);
+  }, [isOpen, authData, exchangeTokens, provider, t]);
 
   // Fix #344: Detect when OAuth popup is closed without completing authorization
   // Some providers (like Qoder) redirect to their own chat UI instead of sending a callback,
@@ -1023,6 +1056,8 @@ export default function OAuthModal({
         }
       }
     }
+    enterpriseFlowRunRef.current += 1;
+    openRef.current = false;
     invalidateDeviceFlow();
     onClose();
   }, [invalidateDeviceFlow, onClose, enterpriseSetup, enterpriseSaved]);

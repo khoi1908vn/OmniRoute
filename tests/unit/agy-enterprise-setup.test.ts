@@ -20,6 +20,7 @@ function request(action: string, owner = "", body?: unknown, origin = "http://lo
 test("server setup keeps tokens pending across discovery failure, pins selected license and saves once", async (t) => {
   const calls: string[] = [];
   let infoFails = true;
+  let licensesFail = true;
   let configFails = true;
   t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -39,6 +40,12 @@ test("server setup keeps tokens pending across discovery failure, pins selected 
         verified_email: true,
       });
     }
+    if (url.endsWith(":fetchLicenses") && licensesFail)
+      return Response.json({ error: "private license failure" }, { status: 503 });
+    if (url.endsWith(":selfAssignLicense"))
+      return Response.json({
+        license: { projectId: "project-one", location: "us", userTier: "standard" },
+      });
     if (url.endsWith(":fetchLicenses"))
       return Response.json({
         licenses: [
@@ -92,6 +99,23 @@ test("server setup keeps tokens pending across discovery failure, pins selected 
   assert.equal(failed.status, 503);
   assert.equal((await failed.text()).includes("private upstream"), false);
   infoFails = false;
+  const partial = await handleEnterpriseOAuth(
+    request(`licenses?setupId=${setup.setupId}`, owner),
+    "licenses"
+  );
+  assert.equal(partial.status, 200);
+  const partialData = await partial.json();
+  assert.equal(partialData.email, "person@example.com");
+  assert.match(partialData.discoveryError, /503/);
+  assert.equal(JSON.stringify(partialData).includes("private license failure"), false);
+  const custom = await handleEnterpriseOAuth(
+    request("verify-project", owner, { setupId: setup.setupId, projectId: "project-one" }),
+    "verify-project"
+  );
+  assert.equal(custom.status, 200);
+  const customData = await custom.json();
+  assert.equal(customData.verifiedLicenseId, customData.licenses[0].licenseId);
+  licensesFail = false;
   const discovery = await handleEnterpriseOAuth(
     request(`licenses?setupId=${setup.setupId}`, owner),
     "licenses"

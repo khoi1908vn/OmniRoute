@@ -47,6 +47,36 @@ function button(text: string) {
   return [...element.querySelectorAll("button")].find((button) => button.textContent === text)!;
 }
 
+function enterProject(value: string) {
+  const input = element.querySelector<HTMLInputElement>(
+    'input[placeholder="my-enterprise-project"]'
+  )!;
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+it("verifying another project selects that license for Save", async () => {
+  const custom = { ...licenses[0], licenseId: "custom-license", projectId: "project-custom" };
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+    if (String(input).includes("licenses?"))
+      return Response.json({ email: "person@example.com", licenses });
+    if (String(input).endsWith("verify-project"))
+      return Response.json({
+        licenses: [...licenses, custom],
+        verifiedLicenseId: custom.licenseId,
+      });
+    return Response.json({ status: "completed" });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  await render();
+  enterProject(custom.projectId);
+  await act(async () => button("Verify project").click());
+  await act(async () => button("Save").click());
+  expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body)).licenseId).toBe(custom.licenseId);
+});
+
 it("single supported license preselects; discovery never saves; explicit Save completes", async () => {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
     Response.json(
@@ -83,5 +113,29 @@ it("discovery error preserves setup and retry loads licenses", async () => {
   expect(element.querySelector('[role="alert"]')?.textContent).toBe("Try again");
   failed = false;
   await act(async () => button("Retry discovery").click());
+  expect(button("Save").disabled).toBe(false);
+});
+
+it("verified identity survives discovery failure so a custom project can be verified", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+    Response.json(
+      String(input).includes("licenses?")
+        ? {
+            email: "person@example.com",
+            licenses: [],
+            discoveryError: "License discovery unavailable",
+          }
+        : { licenses: [licenses[0]], verifiedLicenseId: licenses[0].licenseId }
+    )
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  await render();
+  expect(element.querySelector('[role="alert"]')?.textContent).toBe(
+    "License discovery unavailable"
+  );
+  expect(element.textContent).toContain("person@example.com");
+  enterProject("project-one");
+  expect(button("Verify project").disabled).toBe(false);
+  await act(async () => button("Verify project").click());
   expect(button("Save").disabled).toBe(false);
 });
