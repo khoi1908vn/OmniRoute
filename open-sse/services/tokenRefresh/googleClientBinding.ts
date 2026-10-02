@@ -28,7 +28,8 @@ export type GoogleOauthClientMarker = "builtin" | `custom:${string}` | undefined
 
 function builtinClientFor(provider: string) {
   if (provider === "gemini") return BUILTIN_GEMINI_CLIENT;
-  if (provider === "antigravity" || provider === "agy") return BUILTIN_ANTIGRAVITY_CLIENT;
+  if (provider === "antigravity" || provider === "agy" || provider === "agy-enterprise")
+    return BUILTIN_ANTIGRAVITY_CLIENT;
   // Unknown Google-family provider: no embedded client exists to fall back
   // to. The antigravity client would mint Google 401s for tokens it never
   // issued, so refuse loudly instead of guessing.
@@ -72,6 +73,11 @@ export function selectGoogleRefreshClient(
       clientId: configuredClient.clientId,
       clientSecret: configuredClient.clientSecret,
     };
+  }
+  if (provider === "agy-enterprise" && oauthClientMarker !== "builtin") {
+    throw new Error(
+      "Enterprise issuing OAuth client is unavailable. Restore its client configuration or sign in again."
+    );
   }
   const builtin = builtinClientFor(provider);
   return { clientId: builtin.clientId, clientSecret: builtin.clientSecret };

@@ -16,6 +16,7 @@ type GeminiSSEAccumulator = {
   textContent: string;
   finishReason: string;
   usage: Record<string, unknown> | null;
+  sawTerminal: boolean;
   sawContent: boolean;
   toolCalls: AccumulatedToolCall[];
 };
@@ -120,6 +121,7 @@ function applyFinishReason(
   acc: GeminiSSEAccumulator
 ): void {
   if (!candidate?.finishReason) return;
+  acc.sawTerminal = true;
   acc.finishReason = normalizeOpenAICompatibleFinishReasonString(
     String(candidate.finishReason).toLowerCase()
   );
@@ -127,13 +129,17 @@ function applyFinishReason(
 
 /** Extract usageMetadata into the OpenAI-shaped usage object, if present. */
 function applyUsageMetadata(parsed: Record<string, unknown>, acc: GeminiSSEAccumulator): void {
-  const response = parsed.response as Record<string, unknown> | undefined;
-  const um = response?.usageMetadata as Record<string, unknown> | undefined;
+  const response = (parsed.response || parsed) as Record<string, unknown>;
+  const um = response.usageMetadata as Record<string, unknown> | undefined;
   if (!um) return;
+  const prompt = Number(um.promptTokenCount) || 0;
+  const reasoning = Number(um.thoughtsTokenCount) || 0;
+  const completion = (Number(um.candidatesTokenCount) || 0) + reasoning;
   acc.usage = {
-    prompt_tokens: um.promptTokenCount || 0,
-    completion_tokens: um.candidatesTokenCount || 0,
-    total_tokens: um.totalTokenCount || 0,
+    prompt_tokens: prompt,
+    completion_tokens: completion,
+    total_tokens: Number(um.totalTokenCount) || prompt + completion,
+    ...(reasoning ? { completion_tokens_details: { reasoning_tokens: reasoning } } : {}),
   };
 }
 
@@ -148,7 +154,7 @@ function applyGeminiSSEDataLine(payload: string, acc: GeminiSSEAccumulator): voi
       acc.sawContent = true;
     }
 
-    const response = parsed.response as Record<string, unknown> | undefined;
+    const response = (parsed.response || parsed) as Record<string, unknown>;
     const candidates = response?.candidates;
     const candidate = Array.isArray(candidates)
       ? (candidates[0] as Record<string, unknown> | undefined)
@@ -224,6 +230,7 @@ export function parseSSEToGeminiResponse(
     textContent: "",
     finishReason: "stop",
     usage: null,
+    sawTerminal: false,
     sawContent: false,
     toolCalls: [],
   };
@@ -237,7 +244,7 @@ export function parseSSEToGeminiResponse(
     applyGeminiSSEDataLine(payload, acc);
   }
 
-  if (!acc.sawContent && acc.toolCalls.length === 0) return null;
+  if (!acc.sawContent && !acc.sawTerminal && !acc.usage && acc.toolCalls.length === 0) return null;
 
   return buildChatCompletionFromAccumulator(acc, fallbackModel);
 }

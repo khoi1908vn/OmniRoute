@@ -21,6 +21,7 @@ import {
 import QuotaCardHeader from "./parts/QuotaCardHeader";
 import QuotaCardExpanded from "./parts/QuotaCardExpanded";
 import ProviderUsdCostModal from "./ProviderUsdCostModal";
+import type { EnterpriseQuotaObservations } from "@omniroute/open-sse/utils/agyEnterprise.ts";
 
 const STATUS_BORDER: Record<CardStatus, string> = {
   critical: "#ef4444",
@@ -39,7 +40,10 @@ interface QuotaCardProps {
         plan?: string | null;
         message?: string | null;
         billing?: ProviderBillingStatus | null;
-        raw?: { billing?: ProviderBillingStatus | null };
+        raw?: {
+          billing?: ProviderBillingStatus | null;
+          quotaObservations?: EnterpriseQuotaObservations;
+        };
         stale?: { since?: string; reason?: string } | null;
       }
     | undefined;
@@ -153,6 +157,9 @@ export default function QuotaCard({
         loading={loading}
         error={error}
         message={quota?.message ?? null}
+        quotaObservations={
+          connection.provider === "agy-enterprise" ? quota?.raw?.quotaObservations : undefined
+        }
         billing={
           isProviderBillingProvider(connection.provider)
             ? (quota?.billing ?? quota?.raw?.billing)

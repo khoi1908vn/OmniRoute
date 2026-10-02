@@ -42,6 +42,11 @@ import { isMicrosoftDesignerWebRetiredProviderId } from "@/shared/constants/desi
 import { reconcileCodexUsageHistory } from "./providers/usageIdentityReconciliation";
 import { isRuntimeRetiredProviderId } from "@/shared/constants/providerRetirement";
 import { applyCodexChildCooldownClearOnUpdate } from "./providers/codexAccountState";
+import {
+  sameEnterpriseIdentity,
+  enterpriseLicenseSchema,
+  enterpriseIdentitySnapshot,
+} from "@omniroute/open-sse/utils/agyEnterprise.ts";
 
 /**
  * normalizeProviderSpecificData + the Codex fingerprint-seed invariant: Codex
@@ -511,6 +516,49 @@ function findExistingCookieConnection(
 export async function createProviderConnection(data: JsonRecord) {
   await assertApiKeyIsNotManagementPassword(data.apiKey);
   const db = getDbInstance() as unknown as DbLike;
+  if (data.provider === "agy-enterprise" && data.authType === "oauth") {
+    return upsertEnterpriseOAuthConnection(data);
+  }
+  return createProviderConnectionRow(data, db);
+}
+
+export function upsertEnterpriseOAuthConnection(
+  data: JsonRecord,
+  target?: { id: string; identity?: string }
+) {
+  if (data.provider !== "agy-enterprise" || data.authType !== "oauth") {
+    throw new Error("Enterprise OAuth credentials required");
+  }
+  const context = enterpriseLicenseSchema.parse(data.providerSpecificData);
+  if (data.projectId !== context.projectId) throw new Error("Enterprise project context mismatch");
+  const identity = toRecord(data.providerSpecificData);
+  if (
+    !(typeof identity.googleSubject === "string" && identity.googleSubject.trim()) &&
+    !(typeof data.email === "string" && data.email.trim())
+  )
+    throw new Error("Enterprise account identity required");
+  const db = getDbInstance() as unknown as DbLike;
+  return db.transaction(() => {
+    if (target) {
+      const raw = db.prepare("SELECT * FROM provider_connections WHERE id = ?").get(target.id);
+      const existing = raw ? toRecord(rowToCamel(raw)) : null;
+      if (
+        !existing ||
+        existing.provider !== "agy-enterprise" ||
+        existing.authType !== "oauth" ||
+        !sameEnterpriseIdentity(existing, data) ||
+        (target.identity && enterpriseIdentitySnapshot(existing) !== target.identity)
+      ) {
+        throw new Error(
+          "Enterprise reauthorization target was deleted or its identity does not match"
+        );
+      }
+    }
+    return createProviderConnectionRow(data, db, target?.id);
+  })();
+}
+
+function createProviderConnectionRow(data: JsonRecord, db: DbLike, enterpriseTargetId?: string) {
   const now = new Date().toISOString();
   const normalizedProviderSpecificData = normalizeConnectionProviderSpecificData(
     toStringOrNull(data.provider),
@@ -525,7 +573,17 @@ export async function createProviderConnection(data: JsonRecord) {
   const workspaceId = toStringOrNull(providerSpecificData.workspaceId);
   const chatgptUserId = toStringOrNull(providerSpecificData.chatgptUserId);
 
-  if (data.authType === "oauth" && data.provider === "codex" && chatgptUserId) {
+  if (data.authType === "oauth" && data.provider === "agy-enterprise") {
+    const rows = db
+      .prepare("SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth'")
+      .all(data.provider) as JsonRecord[];
+    existing =
+      rows.find((row) =>
+        enterpriseTargetId
+          ? row.id === enterpriseTargetId
+          : sameEnterpriseIdentity(toRecord(rowToCamel(row)), data)
+      ) || null;
+  } else if (data.authType === "oauth" && data.provider === "codex" && chatgptUserId) {
     const strongSql = workspaceId
       ? "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND json_extract(provider_specific_data, '$.workspaceId') = ? AND json_extract(provider_specific_data, '$.chatgptUserId') = ?"
       : "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND (json_extract(provider_specific_data, '$.workspaceId') IS NULL OR json_extract(provider_specific_data, '$.workspaceId') = '') AND json_extract(provider_specific_data, '$.chatgptUserId') = ?";
@@ -696,7 +754,7 @@ export async function createProviderConnection(data: JsonRecord) {
       isCommonChatGptWebRetiredProviderId(merged.provider)
     ) {
       invalidateDbCache("connections");
-      return (await getProviderConnectionById(existingId)) ?? returnedConnection;
+      return getProviderConnectionById(existingId).then((row) => row ?? returnedConnection);
     }
 
     return returnedConnection;
@@ -833,7 +891,9 @@ export async function createProviderConnection(data: JsonRecord) {
     isRuntimeRetiredProviderId(providerId) ||
     isCommonChatGptWebRetiredProviderId(providerId)
   ) {
-    return (await getProviderConnectionById(String(connection.id))) ?? returnedConnection;
+    return getProviderConnectionById(String(connection.id)).then(
+      (row) => row ?? returnedConnection
+    );
   }
 
   return returnedConnection;

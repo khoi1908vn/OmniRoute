@@ -19,6 +19,10 @@ import {
 } from "@/lib/oauth/utils/codexSessionImport";
 import GheConfigStep from "@/shared/components/oauthModal/GheConfigStep";
 import GitlabDuoSetupStep from "@/shared/components/oauthModal/GitlabDuoSetupStep";
+import EnterpriseLicenseStep, {
+  enterpriseSetupAction,
+  type EnterpriseSetup,
+} from "./oauthModal/EnterpriseLicenseStep";
 import OAuthErrorStep from "@/shared/components/oauthModal/OAuthErrorStep";
 import OAuthWaitingStep from "@/shared/components/oauthModal/OAuthWaitingStep";
 import { parseGrokCliPasteToken } from "@/lib/oauth/utils/grokCliAuthJson";
@@ -31,7 +35,7 @@ import {
 
 export { formatDeviceCodeRemaining } from "./OAuthModalPanels";
 
-const GOOGLE_OAUTH_PROVIDERS = new Set(["antigravity", "agy"]);
+const GOOGLE_OAUTH_PROVIDERS = new Set(["antigravity", "agy", "agy-enterprise"]);
 
 /** Providers that use a local callback server on a random port (PKCE browser flow). */
 const PKCE_CALLBACK_SERVER_PROVIDERS = new Set(["codex", "xai-oauth", "grok-cli"]);
@@ -163,6 +167,18 @@ export default function OAuthModal({
   // #8046 follow-up: structured diagnosis for the LAN-IP loopback mismatch, rendered
   // by its own step instead of as prose inside the generic red error step.
   const [loopbackHint, setLoopbackHint] = useState<PkceLoopbackMismatchHint | null>(null);
+  const [enterpriseSetup, setEnterpriseSetup] = useState<EnterpriseSetup | null>(null);
+  const enterpriseSavedRef = useRef(false);
+  const openRef = useRef(isOpen);
+  useEffect(() => {
+    openRef.current = isOpen;
+  }, [isOpen]);
+  const enterpriseSaved = useCallback(() => {
+    if (enterpriseSavedRef.current) return;
+    enterpriseSavedRef.current = true;
+    setStep("success");
+    onSuccess?.();
+  }, [onSuccess]);
 
   const supportsTokenPaste = TOKEN_PASTE_PROVIDERS.has(provider);
   const importTokenOnly = IMPORT_TOKEN_ONLY_PROVIDERS.has(provider);
@@ -259,6 +275,16 @@ export default function OAuthModal({
           throw new Error(details ? `${errMsg} (${details})` : errMsg);
         }
 
+        if (provider === "agy-enterprise") {
+          const setup = data as unknown as EnterpriseSetup;
+          if (!openRef.current) {
+            await enterpriseSetupAction("cancel", setup.setupId);
+            return;
+          }
+          setEnterpriseSetup(setup);
+          setStep("enterprise-license");
+          return;
+        }
         setStep("success");
         onSuccess?.();
       } catch (err) {
@@ -707,6 +733,7 @@ export default function OAuthModal({
       setAuthData(null);
       setCallbackUrl("");
       setError(null);
+      setEnterpriseSetup(null);
       setIsDeviceCode(false);
       setDeviceData(null);
       setPolling(false);
@@ -716,6 +743,10 @@ export default function OAuthModal({
       }
     }
   }
+
+  useEffect(() => {
+    if (startKey) enterpriseSavedRef.current = false;
+  }, [startKey]);
 
   useEffect(() => {
     if (!isOpen || !provider || flowStartedRef.current) return;
@@ -977,10 +1008,24 @@ export default function OAuthModal({
     }
   };
 
-  const handleClose = useCallback(() => {
+  const handleClose = useCallback(async () => {
+    if (enterpriseSetup && !enterpriseSavedRef.current) {
+      try {
+        const result = await enterpriseSetupAction("cancel", enterpriseSetup.setupId);
+        if (result.status === "completed") enterpriseSaved();
+      } catch (error) {
+        // Expired tickets cannot commit. Other failures retain the setup for retry.
+        const message =
+          error instanceof Error ? error.message : "Could not cancel Enterprise setup";
+        if (!/expired|cancelled|unavailable/i.test(message)) {
+          setError(message);
+          return;
+        }
+      }
+    }
     invalidateDeviceFlow();
     onClose();
-  }, [invalidateDeviceFlow, onClose]);
+  }, [invalidateDeviceFlow, onClose, enterpriseSetup, enterpriseSaved]);
 
   const handlePasteMode = useCallback(() => {
     invalidateDeviceFlow();
@@ -1011,6 +1056,23 @@ export default function OAuthModal({
       size="lg"
     >
       <div className="flex flex-col gap-4">
+        {step === "enterprise-license" && enterpriseSetup && (
+          <>
+            {error && (
+              <p role="alert" className="text-red-500">
+                {error}
+              </p>
+            )}
+            <EnterpriseLicenseStep
+              setup={enterpriseSetup}
+              onSaved={enterpriseSaved}
+              onSignInAgain={() => {
+                setEnterpriseSetup(null);
+                startOAuthFlow();
+              }}
+            />
+          </>
+        )}
         {/* Browser login with an optional token-import fallback. grok-cli adds a
             third "Device Code" tab since it keeps BOTH the device_code flow
             (#7358, default) and the browser PKCE login (#7013) alongside the

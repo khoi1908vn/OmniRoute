@@ -1,0 +1,182 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import Button from "../Button";
+
+type License = {
+  licenseId: string;
+  projectId: string;
+  location: string;
+  userTier: string;
+  tierDisplayName?: string;
+  supported: boolean;
+};
+export type EnterpriseSetup = { setupId: string; expiresAt: number };
+
+export async function enterpriseSetupAction(
+  action: string,
+  setupId: string,
+  extra: Record<string, string> = {}
+) {
+  const response = await fetch(
+    `/api/oauth/agy-enterprise/${action}${action === "licenses" ? `?setupId=${encodeURIComponent(setupId)}` : ""}`,
+    {
+      method: action === "licenses" ? "GET" : "POST",
+      ...(action === "licenses"
+        ? {}
+        : {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ setupId, ...extra }),
+          }),
+    }
+  );
+  const data = await response.json();
+  if (!response.ok)
+    throw new Error(
+      typeof data.error === "string"
+        ? data.error
+        : "Enterprise setup failed. Retry or sign in again."
+    );
+  return data;
+}
+
+export default function EnterpriseLicenseStep({
+  setup,
+  onSaved,
+  onSignInAgain,
+}: {
+  setup: EnterpriseSetup;
+  onSaved: () => void;
+  onSignInAgain: () => void;
+}) {
+  const [licenses, setLicenses] = useState<License[]>([]);
+  const [selected, setSelected] = useState("");
+  const [email, setEmail] = useState("");
+  const [project, setProject] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [expired, setExpired] = useState(() => Date.now() >= setup.expiresAt);
+  const acceptLicenses = useCallback((entries: License[]) => {
+    setLicenses(entries);
+    const supported = entries.filter((entry) => entry.supported);
+    if (supported.length === 1) setSelected(supported[0].licenseId);
+  }, []);
+  const discover = useCallback(async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await enterpriseSetupAction("licenses", setup.setupId);
+      setEmail(data.email);
+      acceptLicenses(data.licenses);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "License discovery failed");
+    } finally {
+      setBusy(false);
+    }
+  }, [setup.setupId, acceptLicenses]);
+  useEffect(() => {
+    void Promise.resolve().then(discover);
+  }, [discover]);
+  useEffect(() => {
+    const timer = setTimeout(() => setExpired(true), Math.max(0, setup.expiresAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [setup.expiresAt]);
+  const submit = async (action: "verify-project" | "finalize") => {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await enterpriseSetupAction(
+        action,
+        setup.setupId,
+        action === "finalize" ? { licenseId: selected } : { projectId: project.trim() }
+      );
+      if (data.status === "completed") onSaved();
+      else acceptLicenses(data.licenses);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Enterprise setup failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (expired)
+    return (
+      <div role="alert">
+        <p>Enterprise setup expired. Sign in again.</p>
+        <Button onClick={onSignInAgain}>Sign in again</Button>
+      </div>
+    );
+  return (
+    <div className="flex flex-col gap-3" aria-busy={busy}>
+      <p>
+        Select an Enterprise license for {email || "your Google account"}. Nothing is saved until
+        you click Save.
+      </p>
+      {error && (
+        <p role="alert" className="text-red-500">
+          {error}
+        </p>
+      )}
+      <fieldset disabled={busy} className="flex flex-col gap-2">
+        <legend>Enterprise licenses</legend>
+        {licenses.map((license) => (
+          <label key={license.licenseId} className="flex items-start gap-2">
+            <input
+              type="radio"
+              name="enterprise-license"
+              value={license.licenseId}
+              checked={selected === license.licenseId}
+              disabled={!license.supported}
+              onChange={() => setSelected(license.licenseId)}
+            />
+            <span>
+              {license.projectId} · {license.location} ·{" "}
+              {license.tierDisplayName || license.userTier}
+              {!license.supported && " — unsupported location; US only"}
+            </span>
+          </label>
+        ))}
+        {!licenses.length && !busy && (
+          <p>No licenses found. Retry discovery or verify a project below.</p>
+        )}
+      </fieldset>
+      <Button variant="secondary" disabled={busy} onClick={discover}>
+        Retry discovery
+      </Button>
+      <label className="flex flex-col gap-1">
+        Custom Google Cloud project ID
+        <input
+          className="rounded border border-border p-2"
+          value={project}
+          disabled={busy}
+          onChange={(event) => setProject(event.target.value)}
+          placeholder="my-enterprise-project"
+        />
+      </label>
+      <p className="text-sm text-text-muted">
+        Verify project requests a US license assignment upstream. Closing this setup cannot undo
+        that assignment.
+      </p>
+      <Button
+        variant="secondary"
+        disabled={busy || !email || !project.trim()}
+        onClick={() => submit("verify-project")}
+      >
+        Verify project
+      </Button>
+      <Button
+        disabled={
+          busy ||
+          !selected ||
+          !licenses.some((license) => license.licenseId === selected && license.supported)
+        }
+        onClick={() => submit("finalize")}
+      >
+        {busy ? "Working…" : "Save"}
+      </Button>
+      <p className="text-sm text-text-muted">
+        Local preview: text chat using gemini-3.5-flash-lite. Live model discovery and tool calls
+        await verified protocol captures.
+      </p>
+    </div>
+  );
+}

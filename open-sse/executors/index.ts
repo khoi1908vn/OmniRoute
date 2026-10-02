@@ -29,6 +29,7 @@ import { getDefaultExecutor } from "./defaultResolver.ts";
 const lazyExecutors: Record<string, () => Promise<BaseExecutor>> = {
   antigravity: () => import("./antigravity.ts").then((m) => new m.AntigravityExecutor()),
   agy: () => import("./antigravity.ts").then((m) => new m.AntigravityExecutor()),
+  "agy-enterprise": () => import("./agyEnterprise.ts").then((m) => new m.AgyEnterpriseExecutor()),
   github: () => import("./github.ts").then((m) => new m.GithubExecutor()),
   "ghe-copilot": () => import("./ghe-copilot.ts").then((m) => new m.GheCopilotExecutor()),
   qoder: () => import("./qoder.ts").then((m) => new m.QoderExecutor()),

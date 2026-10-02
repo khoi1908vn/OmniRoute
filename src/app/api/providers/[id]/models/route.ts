@@ -1652,6 +1652,17 @@ export async function GET(
       return buildApiDiscoveryResponse(models);
     }
 
+    if (provider === "agy-enterprise") {
+      return buildResponse({
+        provider,
+        connectionId,
+        models: getStaticModelsForProvider(provider) || [],
+        source: "local_catalog",
+        warning:
+          "Enterprise local preview: only the captured text experience is available. Live catalog discovery awaits a verified upstream contract.",
+      });
+    }
+
     if (provider === "antigravity" || provider === "agy") {
       const cachedResponse = maybeReturnCachedDiscovery();
       if (cachedResponse) return cachedResponse;

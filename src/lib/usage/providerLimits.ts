@@ -879,6 +879,8 @@ async function fetchLiveProviderLimitsWithOptions(
     result = await fetchUsageWithContext(null);
   }
 
+  if (connection.provider === "agy-enterprise") return { connection, usage: result.usage };
+
   if (connection.provider === "codex") {
     const data = await syncCodexQuotaObservation(
       connection.id,
@@ -934,6 +936,7 @@ export async function fetchAndPersistProviderLimits(
       plan: previous.plan ?? usage.plan ?? null,
       bankedResetCredits: previous.bankedResetCredits,
       billing: previous.billing,
+      quotaObservations: previous.quotaObservations,
       message: null,
       _stale: true,
       _staleSince: previous.fetchedAt,

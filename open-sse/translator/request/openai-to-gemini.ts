@@ -154,6 +154,7 @@ type CloudCodeEnvelope = {
 };
 
 type GeminiToolNameOptions = {
+  enterprise?: boolean;
   stripNamespace?: boolean;
   signatureNamespace?: string | null;
   signaturelessToolCallMode?: "native" | "text" | "context";
@@ -201,7 +202,9 @@ function openaiToGeminiBase(
     model: model,
     contents: [],
     generationConfig: {},
-    safetySettings: body.safetySettings || DEFAULT_SAFETY_SETTINGS,
+    ...(toolNameOptions.enterprise
+      ? {}
+      : { safetySettings: body.safetySettings || DEFAULT_SAFETY_SETTINGS }),
   };
   // Gemini 3.x: an explicit thinkingLevel (from an operator payload override
   // targeting generationConfig.thinkingConfig.thinkingLevel, or supplied
@@ -319,7 +322,7 @@ function openaiToGeminiBase(
   // "reasoning_effort: none" off-switch above (#6813) is the supported opt-out.
   // Gemini 3.x: with an explicit thinkingLevel, only includeThoughts is injected —
   // the deprecated numeric budget is omitted entirely.
-  if (!result.generationConfig.thinkingConfig) {
+  if (!toolNameOptions.enterprise && !result.generationConfig.thinkingConfig) {
     const modelLower = model.toLowerCase();
     if (
       modelLower.includes("gemini") &&
@@ -412,7 +415,7 @@ function openaiToGeminiBase(
       const role = msg.role;
       const content = msg.content;
 
-      if (role === "system" && messages.length > 1) {
+      if (role === "system" && (toolNameOptions.enterprise || messages.length > 1)) {
         const systemText = typeof content === "string" ? content : extractTextContent(content);
         if (systemText) {
           if (!result.systemInstruction) {
@@ -737,11 +740,17 @@ export function openaiToGeminiRequest(
     credentials && typeof credentials["_signatureNamespace"] === "string"
       ? credentials["_signatureNamespace"]
       : null;
-  return openaiToGeminiBase(model, body, stream, {
+  const enterprise = credentials?._provider === "agy-enterprise";
+  const result = openaiToGeminiBase(model, body, stream, {
+    enterprise,
     signatureNamespace,
     signaturelessToolCallMode: options.signaturelessToolCallMode,
     stripFunctionCallId: isVertexGeminiProvider(credentials?._provider),
   });
+  if (enterprise && body.generationConfig && typeof body.generationConfig === "object") {
+    result.generationConfig = { ...result.generationConfig, ...body.generationConfig };
+  }
+  return result;
 }
 
 // OpenAI -> Cloud Code Gemini payload used by Antigravity.

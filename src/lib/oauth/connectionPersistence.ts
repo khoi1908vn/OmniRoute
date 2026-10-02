@@ -6,6 +6,8 @@
  * (+ Codex workspaceId) and update it, else create a new one, then sync to Cloud.
  */
 import { timingSafeEqual } from "crypto";
+import { upsertEnterpriseOAuthConnection } from "@/lib/db/providers";
+import { sameEnterpriseIdentity } from "@omniroute/open-sse/utils/agyEnterprise.ts";
 import {
   createProviderConnection,
   updateProviderConnection,
@@ -98,6 +100,24 @@ export function findExistingOAuthConnectionMatch(
   tokenData: Record<string, any>,
   connectionId?: string
 ): Record<string, any> | undefined {
+  if (provider === "agy-enterprise") {
+    if (connectionId) {
+      const target = existing.find((c) => c.id === connectionId);
+      if (
+        !target ||
+        target.provider !== provider ||
+        target.authType !== "oauth" ||
+        !sameEnterpriseIdentity(target, tokenData)
+      ) {
+        throw new Error("Enterprise reauthorization identity does not match");
+      }
+      return target;
+    }
+    return existing.find(
+      (c) =>
+        c.provider === provider && c.authType === "oauth" && sameEnterpriseIdentity(c, tokenData)
+    );
+  }
   return existing.find((c) => {
     if (c.id && safeEqual(connectionId, c.id)) return true;
     // Email dedup only when the payload actually carries an email. Without this
@@ -149,7 +169,7 @@ export function buildOAuthConnectionCreatePayload(
   };
 }
 
-async function syncToCloudIfEnabled(): Promise<void> {
+export async function syncToCloudIfEnabled(): Promise<void> {
   try {
     const cloudEnabled = await isCloudEnabled();
     if (!cloudEnabled) return;
@@ -163,17 +183,27 @@ async function syncToCloudIfEnabled(): Promise<void> {
 export async function persistOAuthConnection(
   provider: string,
   tokenData: any,
-  connectionId?: string
+  connectionId?: string,
+  enterpriseReauthIdentity?: string
 ) {
   // Normalize: if name is missing, use email or displayName as fallback label.
   if (!tokenData.name && (tokenData.email || tokenData.displayName)) {
     tokenData.name = tokenData.email || tokenData.displayName;
   }
 
-  const expiresAt = tokenData.expiresIn
-    ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString()
-    : null;
+  const expiresAt =
+    tokenData.expiresAt ||
+    (tokenData.expiresIn ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString() : null);
   const degradedProject = antigravityDegradedProjectState(provider, tokenData);
+
+  if (provider === "agy-enterprise") {
+    const connection = await upsertEnterpriseOAuthConnection(
+      buildOAuthConnectionCreatePayload(provider, tokenData, expiresAt),
+      connectionId ? { id: connectionId, identity: enterpriseReauthIdentity } : undefined
+    );
+    await syncToCloudIfEnabled();
+    return connection;
+  }
 
   let connection: any;
   // A connectionId is an explicit "update THIS connection" signal (token refresh

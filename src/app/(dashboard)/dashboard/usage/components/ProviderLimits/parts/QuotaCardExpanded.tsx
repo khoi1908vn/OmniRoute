@@ -27,6 +27,7 @@ import {
   sortQuotasByWindow,
 } from "../quotaParsing";
 import KiloPassMeter from "./KiloPassMeter";
+import type { EnterpriseQuotaObservations } from "@omniroute/open-sse/utils/agyEnterprise.ts";
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: "$",
@@ -141,6 +142,7 @@ interface Props {
   error: string | null;
   message?: string | null;
   billing?: ProviderBillingStatus | null;
+  quotaObservations?: EnterpriseQuotaObservations;
   refreshedAt?: string;
   hasStaleData: boolean;
   onRefresh: () => void;
@@ -326,6 +328,7 @@ export default function QuotaCardExpanded({
   error,
   message,
   billing,
+  quotaObservations,
   refreshedAt,
   hasStaleData,
   onRefresh,
@@ -371,7 +374,34 @@ export default function QuotaCardExpanded({
 
   return (
     <div className="border-t border-border bg-bg-subtle/30 px-3 py-2.5 flex flex-col gap-1.5">
-      {shouldShowLoadingPlaceholder(loading, sortedQuotas.length, message) ? (
+      {providerId === "agy-enterprise" && quotaObservations ? (
+        <div className="flex flex-col gap-1 text-[11px]">
+          <p className="text-text-muted">
+            Advisory Google account observations. Scope for this Enterprise license is unverified;
+            excluded from routing and cooldown decisions.
+          </p>
+          <p className="text-text-muted">
+            {quotaObservations.source} · observed{" "}
+            {new Date(quotaObservations.observedAt).toLocaleString()}
+            {hasStaleData ? " · stale" : ""}
+          </p>
+          {quotaObservations.buckets.map((bucket, index) => (
+            <div key={`${bucket.bucketId}-${index}`} className="flex justify-between gap-2">
+              <span>{bucket.displayName || bucket.bucketId}</span>
+              <span>
+                {bucket.remainingFraction === undefined
+                  ? "Remaining unknown"
+                  : `${Math.round(bucket.remainingFraction * 100)}% remaining observed`}
+              </span>
+            </div>
+          ))}
+          {error && (
+            <p role="alert" className="text-red-500">
+              {error}
+            </p>
+          )}
+        </div>
+      ) : shouldShowLoadingPlaceholder(loading, sortedQuotas.length, message) ? (
         <div className="text-[11px] text-text-muted flex items-center gap-1.5">
           <span className="material-symbols-outlined animate-spin text-[13px]">
             progress_activity

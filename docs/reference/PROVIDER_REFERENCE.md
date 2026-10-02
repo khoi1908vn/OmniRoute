@@ -1,16 +1,16 @@
 ---
 title: "Provider Reference"
-version: 3.8.51
-lastUpdated: 2026-09-24
+version: 3.8.52
+lastUpdated: 2026-10-02
 ---
 
 # Provider Reference
 
 > **Auto-generated** from `src/shared/constants/providers.ts` — do not edit by hand.
 > Regenerate with: `npm run gen:provider-reference`
-> **Last generated:** 2026-09-24
+> **Last generated:** 2026-10-02
 
-Total providers: **358**. See category breakdown below.
+Total providers: **359**. See category breakdown below.
 
 ## Categories
 
@@ -44,16 +44,17 @@ Use the dashboard at `/dashboard/providers` to enable, configure, and test each 
 | `codex-app-server` | `cxa` | OpenAI Codex (App-Server) | No-auth | [link](https://developers.openai.com/codex/cli) | No token stored by OmniRoute. The Codex CLI app-server manages its own ChatGPT sign-in (~/.codex/auth.json, auto-refreshed). Use “Sign in with ChatGPT” if the CLI is not yet authenticated. | — |
 | `devin-cli-agentic` | `dva` | Devin CLI Agentic Bridge | No-auth | [link](https://docs.devin.ai/work-with-devin/devin-cli) | Authentication is owned by the official Devin CLI in its isolated bridge volume. | emulated |
 | `duckduckgo-web` | `ddgw` | DuckDuckGo AI Chat | No-auth | [link](https://duckduckgo.com/duckchat) | No credentials required — DuckDuckGo AI Chat is anonymous and free. | emulated |
-| `opencode` | `oc` | OpenCode Free | No-auth | [link](https://opencode.ai) | No API key required — uses OpenCode's public free endpoint. | — |
+| `opencode` | `oc` | OpenCode Free | No-auth | [link](https://opencode.ai) | No API key required — OpenCode's free tier can only be used from within OpenCode (client-contract requests). | — |
 | `uncloseai` | `unc` | UncloseAI | No-auth | [link](https://uncloseai.com) | No auth required. API accepts any non-empty string as key for identification. If older built-in models return 404, use Available Models → Import from /models or Auto-Sync; verified live model: Lorbus/Qwen3.6-27B-int4-AutoRound. | — |
 | `veoaifree-web` | `veo-free` | Veo AI Free | No-auth, video | [link](https://veoaifree.com) | No auth required. Rate limited to 6 requests/hour per IP. | — |
 | `zcode` | `zc` | ZCode (GLM Coding Plan) | No-auth | [link](https://zcode.z.ai) | No API key stored by OmniRoute. The local ZCode app-server uses the existing builtin:zai-coding-plan login. | — |
 
-## OAuth Providers (25)
+## OAuth Providers (26)
 
 | ID | Alias | Name | Tags | Website | Notes |
 |----|-------|------|------|---------|-------|
 | `agy` | `agy` | Antigravity CLI | OAuth | [link](https://antigravity.google) | Import your Antigravity CLI (`agy`) login (paste/upload its token file), auto-detect a local CLI login, or sign in with Google. Shares the Antigravity backend (incl. Claude models). |
+| `agy-enterprise` | `agy-enterprise` | Antigravity Enterprise | OAuth | — | Local preview: sign in with Google, select a US Enterprise license, then Save. Text chat with gemini-3.5-flash-lite; setup expires after 15 minutes. |
 | `amazon-q` | `aq` | Amazon Q | OAuth | [link](https://aws.amazon.com/q/developer/) | Uses the same AWS Builder ID or imported refresh-token flow as Kiro, but keeps Amazon Q connections separate. |
 | `antigravity` | — | Antigravity | OAuth | — | — |
 | `claude` | `cc` | Claude Code | OAuth | — | — |
@@ -289,7 +290,7 @@ Use the dashboard at `/dashboard/providers` to enable, configure, and test each 
 | `perplexity` | `pplx` | Perplexity | API key | [link](https://www.perplexity.ai) | — |
 | `perplexity-agent` | `pplx-agent` | Perplexity Agent | API key | [link](https://www.perplexity.ai) | Use your Perplexity API key. OmniRoute routes Agent API model IDs through Perplexity's Responses-compatible endpoint. |
 | `piapi` | `pi` | PiAPI | API key, aggregator | [link](https://piapi.ai) | — |
-| `pioneer` | `pn` | Pioneer AI | API key | [link](https://pioneer.ai) | No free tier — paid plans start with $40 platform credits |
+| `pioneer` | `pn` | Pioneer AI | API key | [link](https://pioneer.ai) | — |
 | `plamo` | `plamo` | PLaMo | API key | [link](https://plamo.preferredai.jp/api) | — |
 | `poe` | `poe` | Poe | API key, aggregator | [link](https://creator.poe.com/api-reference) | Bearer API key for the Poe OpenAI-compatible API. |
 | `poixe-ai` | `poixe-ai` | Poixe AI | API key, aggregator | [link](https://poixe.com) | Current public free limits are small and model-group specific: 2 RPM/5 RPD for large-cup models and 20 RPM/50 RPD for small-cup models. |
@@ -446,7 +447,7 @@ Use the dashboard at `/dashboard/providers` to enable, configure, and test each 
 
 - Catalog: [`src/shared/constants/providers.ts`](../../src/shared/constants/providers.ts)
 - Registry (per-model details): [`open-sse/config/providerRegistry.ts`](../../open-sse/config/providerRegistry.ts)
-- Executors: [`open-sse/executors/`](../../open-sse/executors/) (127 implementations)
+- Executors: [`open-sse/executors/`](../../open-sse/executors/) (136 implementations)
 - Translators: [`open-sse/translator/`](../../open-sse/translator/)
 
 ## See Also

@@ -16,6 +16,7 @@ export async function shouldSkipCredentialRefresh(
   response: Response
 ): Promise<boolean> {
   if (isNoAuthProviderKey(provider)) return true;
+  if (provider === "agy-enterprise" && response.status === 403) return true;
   if (!provider || !provider.toLowerCase().startsWith("opencode")) return false;
   const bodyText = await response
     .clone()
