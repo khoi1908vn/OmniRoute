@@ -93,7 +93,7 @@ export const OAUTH_PROVIDERS = {
     alias: "agy-enterprise",
     name: "Antigravity Enterprise",
     passthroughModels: true,
-    icon: "business",
+    icon: "terminal",
     color: "#F59E0B",
     textIcon: "AGY",
     subscriptionRisk: true,

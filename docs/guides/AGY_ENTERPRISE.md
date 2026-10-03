@@ -1,41 +1,66 @@
 ---
 title: "Antigravity Enterprise Local Preview"
 version: 3.8.52
-lastUpdated: 2026-10-02
+lastUpdated: 2026-10-03
 ---
 
 # Antigravity Enterprise local preview
 
-The `agy-enterprise` provider uses Google OAuth and a selected US Enterprise license.
+The `agy-enterprise` provider uses Google OAuth and a selected US or EU Enterprise license.
 It has its own connections; personal `agy` and `antigravity` accounts remain separate.
+Its dashboard icon reuses the AGY brand in both color and monochrome modes.
 
 ## Connect
 
 Open **Dashboard → Providers → Antigravity Enterprise**, sign in with Google, and
 review the discovered project, location and tier. Click **Save** to validate the
 selected configuration and persist the connection. OAuth exchange alone does not
-save an account. Other returned locations are visible but disabled.
+save an account. Locations other than US and EU are visible but disabled.
 
 If discovery fails, retry within the same setup. Pending credentials remain in
 server memory for 15 minutes from exchange. Expiry or server restart requires a
 new Google sign-in. Closing setup cancels an uncommitted save. A save that has
 already committed remains saved.
 
-**Verify project** explicitly requests US license assignment for the entered Google
-Cloud project. Cancelling setup cannot undo an upstream assignment.
+**Verify project** explicitly requests license assignment for the entered Google
+Cloud project and selected region (US by default). Cancelling setup cannot undo an
+upstream assignment. Discovery and retry never request assignment. The server rejects
+an assignment response for another project or region.
+
+Connections are distinct by Google account, project and region. Reauthorization
+cannot replace a connection with another region. Inference uses the saved context;
+request payloads cannot override it.
 
 ## Local behavior
 
-- The available model is `agy-enterprise/gemini-3.5-flash-lite`, the text experience
-  visible in the supplied HTTP Toolkit screenshots.
+- Model refresh uses an authenticated POST with body `{}` to
+  `https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`.
+  Only `groups[0].buckets[]` supplies model IDs and display names. Duplicate IDs are
+  collapsed, missing names use the ID, and exhausted buckets remain listed.
+- Discovery uses the existing per-connection sync cache. Explicit refresh replaces
+  it; a valid empty result clears stale entries. Malformed data or failed requests
+  preserve cached models. Automatic discovery respects the connection's auto-fetch
+  setting; explicit refresh still works when auto-fetch is disabled. Custom model
+  metadata takes precedence and hidden-model filtering remains available.
+- `agy-enterprise/gemini-3.5-flash-lite`, the experience visible in the supplied
+  screenshots, remains the offline catalog fallback. Custom text experience IDs
+  are also accepted (nonblank, at most 200 characters). The selected ID is sent
+  unchanged as `aicode.experience`; listing a bucket does not prove entitlement or
+  tool, vision or pricing capabilities. Unsupported experiences may fail upstream.
 - Chat Completions and Responses support streaming and JSON responses. The upstream
-  always uses Gemini SSE on the fixed US regional Enterprise endpoint.
-- Tool calls, images, other regions and unverified model experiences are disabled.
+  always uses Gemini SSE on the saved region's Enterprise endpoint.
+- US resource RPCs use `https://businessaicode.us.rep.googleapis.com` with
+  `/v1beta/projects/{projectId}/locations/us`. EU uses
+  `https://businessaicode.eu.rep.googleapis.com` and `/locations/eu` in that resource
+  path. Assignment, config and inference share this mapping; no cross-region fallback
+  occurs. Automatic license discovery always uses
+  `GET https://businessaicode.googleapis.com/v1beta:fetchLicenses` without a body or
+  region parameter, and model discovery keeps its fixed Cloud Code endpoint.
+- Tool calls, images and locations other than US/EU are unsupported.
 - OAuth currently reuses the existing Antigravity CLI Google client and scopes.
   The screenshots did not expose the actual Enterprise OAuth issuer or scopes;
-  successful live sign-in and inference are still required to verify compatibility.
-- The model list is a local catalog. Live `fetchAvailableModels` synchronization
-  awaits a verified request/response and model-to-experience mapping.
+  the follow-up does not change the OAuth client or scopes. Enterprise transport uses
+  the captured CLI fingerprint independently of the personal provider's defaults.
 - Usage refresh shows Google account quota buckets as advisory observations with
   source and observation time. Their scope for the selected license is unverified.
   A full fraction does not mean unlimited. Observations do not control routing,
@@ -46,6 +71,20 @@ Screenshot provenance is recorded in
 [`tests/fixtures/agy-enterprise/README.md`](../../tests/fixtures/agy-enterprise/README.md).
 Automated protocol tests use synthetic context and sanitized screenshot values;
 they do not prove live upstream acceptance or authentic tool/signature replay.
+
+## Verification limits and Global follow-up
+
+The follow-up's request fidelity, US/EU routing, model cache, custom dispatch and icon
+behavior are covered by automated tests. Live acceptance remains open: successful
+license discovery for the account reporting HTTP 403, EU assignment/config/inference,
+and another discovered model through both API surfaces. Matching the captured headers
+alone does not establish that the reported 403 is fixed. No new assignment was made
+during this follow-up's validation.
+
+**Global TODO:** the operator verified the host `businessaicode.googleapis.com`, but
+the resource location and full assignment/config/inference contract still need a
+capture. Do not assume a Global resource path or fall back to it automatically.
+Global licenses remain visible but unsupported.
 
 ## Start the isolated local profile
 

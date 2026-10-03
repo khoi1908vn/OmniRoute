@@ -313,6 +313,7 @@ const LOBE_PROVIDER_ALIASES = {
   anthropic: "Anthropic",
   antigravity: "Antigravity",
   agy: "Antigravity", // Antigravity CLI — same brand icon as the antigravity provider
+  "agy-enterprise": "Antigravity",
   assemblyai: "AssemblyAI",
   "aws-polly": "Aws",
   azure: "Azure",
