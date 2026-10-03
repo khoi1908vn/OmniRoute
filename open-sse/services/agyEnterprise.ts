@@ -2,9 +2,60 @@ import { z } from "zod";
 import {
   enterpriseContextSchema,
   enterpriseLicenseSchema,
+  enterpriseQuotaObservationsSchema,
   type EnterpriseContext,
   type EnterpriseLocation,
 } from "@omniroute/open-sse/utils/agyEnterprise.ts";
+
+export const enterpriseQuotaSummarySchema = z.object({
+  groups: z
+    .array(
+      z.object({
+        buckets: z
+          .array(
+            enterpriseQuotaObservationsSchema.shape.buckets.element.extend({
+              bucketId: z.string().min(1).max(200).regex(/\S/),
+            })
+          )
+          .max(200),
+      })
+    )
+    .max(100),
+});
+export type EnterpriseQuotaSummary = z.infer<typeof enterpriseQuotaSummarySchema>;
+
+export async function fetchEnterpriseQuotaSummary(
+  accessToken: string,
+  signal?: AbortSignal
+): Promise<EnterpriseQuotaSummary> {
+  return enterpriseQuotaSummarySchema.parse(
+    await enterpriseFetchJson(
+      "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+      accessToken,
+      { method: "POST", body: "{}", signal }
+    )
+  );
+}
+
+export async function fetchEnterpriseModels(
+  accessToken: string,
+  signal?: AbortSignal
+): Promise<Array<{ id: string; name: string; apiFormat: "gemini"; supportsTools: false }>> {
+  const summary = await fetchEnterpriseQuotaSummary(accessToken, signal);
+  const seen = new Set<string>();
+  return (summary.groups[0]?.buckets || []).flatMap((bucket) => {
+    if (seen.has(bucket.bucketId)) return [];
+    seen.add(bucket.bucketId);
+    return [
+      {
+        id: bucket.bucketId,
+        name: bucket.displayName?.trim() || bucket.bucketId,
+        apiFormat: "gemini" as const,
+        supportsTools: false as const,
+      },
+    ];
+  });
+}
 
 export const ENTERPRISE_US_HOST = "https://businessaicode.us.rep.googleapis.com";
 const ENTERPRISE_HOSTS: Record<EnterpriseLocation, string> = {

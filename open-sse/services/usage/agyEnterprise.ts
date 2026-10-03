@@ -1,39 +1,14 @@
-import { z } from "zod";
 import {
   enterpriseContextSchema,
   enterpriseQuotaObservationsSchema,
 } from "../../utils/agyEnterprise.ts";
-import { enterpriseFetchJson } from "../agyEnterprise.ts";
-
-const summarySchema = z.object({
-  groups: z
-    .array(
-      z.object({
-        buckets: z
-          .array(
-            z.object({
-              bucketId: z.string().min(1).max(200),
-              displayName: z.string().max(200).optional(),
-              remainingFraction: z.number().min(0).max(1).optional(),
-            })
-          )
-          .max(200),
-      })
-    )
-    .max(100),
-});
+import { fetchEnterpriseQuotaSummary } from "../agyEnterprise.ts";
 
 export async function getEnterpriseUsage(accessToken: string | undefined, context: unknown) {
   try {
     enterpriseContextSchema.parse(context);
     if (!accessToken) throw new Error("Missing token");
-    const data = summarySchema.parse(
-      await enterpriseFetchJson(
-        "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
-        accessToken,
-        { method: "POST", body: "{}" }
-      )
-    );
+    const data = await fetchEnterpriseQuotaSummary(accessToken);
     return {
       quotas: null,
       quotaObservations: enterpriseQuotaObservationsSchema.parse({

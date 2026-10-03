@@ -24,6 +24,7 @@ const requestSchema = z.object({
   systemInstruction: content.optional(),
   generationConfig: z.record(z.string(), z.unknown()).optional(),
 });
+const experienceSchema = z.string().min(1).max(200).regex(/\S/);
 
 export class AgyEnterpriseExecutor extends BaseExecutor {
   constructor() {
@@ -51,15 +52,14 @@ export class AgyEnterpriseExecutor extends BaseExecutor {
     _stream: boolean,
     credentials: ProviderCredentials
   ) {
-    if (model !== "gemini-3.5-flash-lite")
-      throw new Error("Enterprise model experience is unverified. Use gemini-3.5-flash-lite.");
+    const experience = experienceSchema.parse(model);
     const source = body as Record<string, unknown>;
     if ((Array.isArray(source?.tools) && source.tools.length) || source?.toolConfig)
       throw new Error("Enterprise tool calling is not yet verified");
     const context = enterpriseContextSchema.parse(credentials.providerSpecificData);
     return {
       ...requestSchema.parse(body),
-      aicode: { experience: model },
+      aicode: { experience },
       entitlement: { userTier: context.userTier },
     };
   }

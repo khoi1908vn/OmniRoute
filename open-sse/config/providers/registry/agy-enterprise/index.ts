@@ -25,5 +25,5 @@ export const agyEnterpriseProvider: RegistryEntry = {
       supportsVision: false,
     },
   ],
-  passthroughModels: false,
+  passthroughModels: true,
 };

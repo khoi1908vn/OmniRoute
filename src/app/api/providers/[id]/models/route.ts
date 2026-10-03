@@ -28,6 +28,8 @@ import {
 } from "@/shared/network/outboundUrlGuardPolicy";
 import { errorResponse, sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 import { getStaticQoderModels } from "@omniroute/open-sse/services/qoderCli.ts";
+import { fetchEnterpriseModels } from "@omniroute/open-sse/services/agyEnterprise.ts";
+import { runWithProxyContextOrDirect } from "@omniroute/open-sse/utils/proxyFetch.ts";
 import { deriveConfigFromRegistryModelsUrl } from "./discoveryConfig";
 import {
   buildTokenPlanCatalogRequest,
@@ -1653,14 +1655,28 @@ export async function GET(
     }
 
     if (provider === "agy-enterprise") {
-      return buildResponse({
-        provider,
-        connectionId,
-        models: getStaticModelsForProvider(provider) || [],
-        source: "local_catalog",
-        warning:
-          "Enterprise local preview: only the captured text experience is available. Live catalog discovery awaits a verified upstream contract.",
-      });
+      const cachedResponse = maybeReturnCachedDiscovery();
+      if (cachedResponse) return cachedResponse;
+      const disabledResponse = maybeReturnAutoFetchDisabled();
+      if (disabledResponse) return disabledResponse;
+      try {
+        if (!accessToken) throw new Error("Enterprise OAuth token unavailable");
+        const models = await runWithProxyContextOrDirect(proxy, () =>
+          fetchEnterpriseModels(accessToken, request.signal)
+        );
+        return await buildApiDiscoveryResponse(models);
+      } catch {
+        return (
+          buildDiscoveryFallbackResponse() ||
+          buildResponse({
+            provider,
+            connectionId,
+            models: [],
+            source: "local_catalog",
+            warning: "Enterprise model discovery unavailable. Retry later.",
+          })
+        );
+      }
     }
 
     if (provider === "antigravity" || provider === "agy") {

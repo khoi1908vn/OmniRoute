@@ -92,13 +92,14 @@ export const OAUTH_PROVIDERS = {
     serviceKinds: ["llm"],
     alias: "agy-enterprise",
     name: "Antigravity Enterprise",
+    passthroughModels: true,
     icon: "business",
     color: "#F59E0B",
     textIcon: "AGY",
     subscriptionRisk: true,
     riskNoticeVariant: "oauth",
     authHint:
-      "Local preview: sign in with Google, select a US Enterprise license, then Save. Text chat with gemini-3.5-flash-lite; setup expires after 15 minutes.",
+      "Sign in with Google, select a US or EU Enterprise license, then Save. Discover account-listed text models or add a custom experience ID; availability depends on your license. Setup expires after 15 minutes.",
   },
   kiro: {
     id: "kiro",

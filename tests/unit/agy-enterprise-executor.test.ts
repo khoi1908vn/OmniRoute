@@ -88,9 +88,23 @@ test("registry selects Enterprise executor and OpenAI text remains root Gemini w
       providerSpecificData: { ...context, location: "global" },
     })
   );
-  assert.throws(
-    () => executor.transformRequest("gemini-3.8-flash-high", translated, false, credentials),
-    /unverified/
+  for (const experience of ["gemini-3.8-flash-high", "custom-experience"]) {
+    assert.equal(
+      executor.transformRequest(experience, translated, false, credentials).aicode.experience,
+      experience
+    );
+  }
+  for (const invalid of ["", " ", "x".repeat(201)])
+    assert.throws(() => executor.transformRequest(invalid, translated, false, credentials));
+  assert.throws(() =>
+    executor.transformRequest(
+      "custom-experience",
+      {
+        contents: [{ parts: [{ inlineData: { mimeType: "image/png", data: "synthetic" } }] }],
+      },
+      false,
+      credentials
+    )
   );
   assert.throws(
     () =>

@@ -192,8 +192,8 @@ export default function EnterpriseLicenseStep({
         {busy ? "Working…" : "Save"}
       </Button>
       <p className="text-sm text-text-muted">
-        Local preview: text chat using gemini-3.5-flash-lite. Live model discovery and tool calls
-        await verified protocol captures.
+        Text chat supports discovered models and custom experience IDs. Model availability depends
+        on your license. Tool calls and images are not supported.
       </p>
     </div>
   );
