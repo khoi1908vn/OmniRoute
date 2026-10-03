@@ -4,7 +4,6 @@ import {
   enterpriseLicenseSchema,
   type EnterpriseContext,
 } from "@omniroute/open-sse/utils/agyEnterprise.ts";
-import { antigravityCliUserAgent } from "./antigravityHeaders.ts";
 
 export const ENTERPRISE_US_HOST = "https://businessaicode.us.rep.googleapis.com";
 export function enterpriseResource(context: EnterpriseContext): string {
@@ -15,7 +14,9 @@ export function enterpriseHeaders(accessToken: string): Record<string, string> {
   return {
     Authorization: `Bearer ${accessToken}`,
     "Content-Type": "application/json",
-    "User-Agent": antigravityCliUserAgent(undefined, "gcp"),
+    // Captured Enterprise CLI identity; independent of personal Antigravity defaults.
+    "User-Agent":
+      "antigravity/cli/1.2.14 (aidev_client; os_type=windows; arch=amd64; cl=990662481; auth_method=gcp)",
   };
 }
 export async function enterpriseFetchJson(

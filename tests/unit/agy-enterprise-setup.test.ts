@@ -3,6 +3,25 @@ import assert from "node:assert/strict";
 import { handleEnterpriseOAuth } from "../../src/lib/oauth/enterpriseSetup.ts";
 import { getProviderConnections, getProviderConnectionById } from "../../src/lib/db/providers.ts";
 import { enterprisePendingSetup } from "../../src/lib/oauth/enterprisePendingSetup.ts";
+import { fetchEnterpriseLicenses } from "../../open-sse/services/agyEnterprise.ts";
+
+test("license discovery matches the captured Enterprise request without assignment", async (t) => {
+  const calls: Request[] = [];
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    calls.push(new Request(input, init));
+    return Response.json({ licenses: [] });
+  });
+  await fetchEnterpriseLicenses("synthetic-access");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://businessaicode.googleapis.com/v1beta:fetchLicenses");
+  assert.equal(calls[0].method, "GET");
+  assert.equal(calls[0].body, null);
+  assert.equal(calls[0].headers.get("Authorization"), "Bearer synthetic-access");
+  assert.equal(
+    calls[0].headers.get("User-Agent"),
+    "antigravity/cli/1.2.14 (aidev_client; os_type=windows; arch=amd64; cl=990662481; auth_method=gcp)"
+  );
+});
 
 const base = "http://localhost:20128/api/oauth/agy-enterprise/";
 function request(action: string, owner = "", body?: unknown, origin = "http://localhost:20128") {
@@ -41,7 +60,7 @@ test("server setup keeps tokens pending across discovery failure, pins selected 
       });
     }
     if (url.endsWith(":fetchLicenses") && licensesFail)
-      return Response.json({ error: "private license failure" }, { status: 503 });
+      return Response.json({ error: "private license failure" }, { status: 403 });
     if (url.endsWith(":selfAssignLicense"))
       return Response.json({
         license: { projectId: "project-one", location: "us", userTier: "standard" },
@@ -106,8 +125,18 @@ test("server setup keeps tokens pending across discovery failure, pins selected 
   assert.equal(partial.status, 200);
   const partialData = await partial.json();
   assert.equal(partialData.email, "person@example.com");
-  assert.match(partialData.discoveryError, /503/);
+  assert.match(partialData.discoveryError, /403/);
   assert.equal(JSON.stringify(partialData).includes("private license failure"), false);
+  const retry = await handleEnterpriseOAuth(
+    request(`licenses?setupId=${setup.setupId}`, owner),
+    "licenses"
+  );
+  assert.equal((await retry.json()).email, "person@example.com");
+  assert.equal(
+    calls.some((url) => url.includes(":selfAssignLicense")),
+    false
+  );
+  assert.equal(calls.filter((url) => url.includes("oauth2.googleapis.com/token")).length, 1);
   const custom = await handleEnterpriseOAuth(
     request("verify-project", owner, { setupId: setup.setupId, projectId: "project-one" }),
     "verify-project"
