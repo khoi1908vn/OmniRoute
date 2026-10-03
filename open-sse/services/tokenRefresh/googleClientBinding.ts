@@ -26,10 +26,18 @@ export const BUILTIN_GEMINI_CLIENT = {
 /** Marker recorded at authorize time; the literal id guards client rotation. */
 export type GoogleOauthClientMarker = "builtin" | `custom:${string}` | undefined;
 
+export class EnterpriseOAuthReauthorizationError extends Error {
+  constructor() {
+    super(
+      "Enterprise issuing OAuth client is unavailable. Restore its client configuration or sign in again."
+    );
+    this.name = "EnterpriseOAuthReauthorizationError";
+  }
+}
+
 function builtinClientFor(provider: string) {
   if (provider === "gemini") return BUILTIN_GEMINI_CLIENT;
-  if (provider === "antigravity" || provider === "agy" || provider === "agy-enterprise")
-    return BUILTIN_ANTIGRAVITY_CLIENT;
+  if (provider === "antigravity" || provider === "agy") return BUILTIN_ANTIGRAVITY_CLIENT;
   // Unknown Google-family provider: no embedded client exists to fall back
   // to. The antigravity client would mint Google 401s for tokens it never
   // issued, so refuse loudly instead of guessing.
@@ -66,6 +74,7 @@ export function selectGoogleRefreshClient(
   if (
     typeof oauthClientMarker === "string" &&
     oauthClientMarker.startsWith("custom:") &&
+    configuredClient?.clientId &&
     oauthClientMarker.slice("custom:".length) === configuredClient?.clientId &&
     configuredClient?.clientSecret
   ) {
@@ -74,11 +83,7 @@ export function selectGoogleRefreshClient(
       clientSecret: configuredClient.clientSecret,
     };
   }
-  if (provider === "agy-enterprise" && oauthClientMarker !== "builtin") {
-    throw new Error(
-      "Enterprise issuing OAuth client is unavailable. Restore its client configuration or sign in again."
-    );
-  }
+  if (provider === "agy-enterprise") throw new EnterpriseOAuthReauthorizationError();
   const builtin = builtinClientFor(provider);
   return { clientId: builtin.clientId, clientSecret: builtin.clientSecret };
 }

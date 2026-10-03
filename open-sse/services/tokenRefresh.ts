@@ -46,7 +46,10 @@ import { refreshMuseCodeToken } from "./tokenRefresh/providers/museCode.ts";
 import { refreshGitLabDuoToken } from "./tokenRefresh/providers/gitlabDuo.ts";
 import { refreshClaudeOAuthToken } from "./tokenRefresh/providers/claudeOAuth.ts";
 import { refreshGoogleToken } from "./tokenRefresh/providers/google.ts";
-import { selectGoogleRefreshClient } from "./tokenRefresh/googleClientBinding.ts";
+import {
+  selectGoogleRefreshClient,
+  EnterpriseOAuthReauthorizationError,
+} from "./tokenRefresh/googleClientBinding.ts";
 import {
   ensureAntigravityProjectAssigned,
   isUsableAntigravityProjectId,
@@ -545,6 +548,23 @@ export async function getAccessToken(
   if (!credentials || !credentials.refreshToken || typeof credentials.refreshToken !== "string") {
     log?.warn?.("TOKEN_REFRESH", `No valid refresh token available for provider: ${provider}`);
     return null;
+  }
+
+  // Check before mutex/rotation-cache reuse: legacy tokens cannot borrow a valid issuer's result.
+  if (provider === "agy-enterprise") {
+    try {
+      selectGoogleRefreshClient(
+        provider,
+        credentials.providerSpecificData?.oauthClient,
+        PROVIDERS[provider]
+      );
+    } catch (error) {
+      if (!(error instanceof EnterpriseOAuthReauthorizationError)) throw error;
+      return {
+        error: "unrecoverable_refresh_error",
+        code: "enterprise_oauth_reauthorization_required",
+      };
+    }
   }
 
   // If the caller did not pass onPersist explicitly, fall back to the active
