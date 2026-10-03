@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sanitizeErrorMessage, sanitizeUpstreamDetails } from "../utils/error.ts";
 import {
   enterpriseContextSchema,
   enterpriseLicenseSchema,
@@ -80,6 +81,7 @@ export async function enterpriseFetchJson(
   accessToken: string,
   init: RequestInit = {}
 ): Promise<unknown> {
+  const startedAt = Date.now();
   const response = await fetch(url, {
     ...init,
     headers: enterpriseHeaders(accessToken),
@@ -87,10 +89,43 @@ export async function enterpriseFetchJson(
       ? AbortSignal.any([init.signal, AbortSignal.timeout(15_000)])
       : AbortSignal.timeout(15_000),
   });
-  if (!response.ok)
-    throw Object.assign(new Error(`Enterprise request failed (HTTP ${response.status})`), {
+  if (!response.ok) {
+    let upstream: unknown;
+    try {
+      // Remove even opaque echoed access tokens before parsing or logging upstream data.
+      const text = (await response.text()).split(accessToken).join("[REDACTED]");
+      try {
+        const parsed: unknown = JSON.parse(text);
+        upstream =
+          parsed && typeof parsed === "object" && "error" in parsed ? parsed.error : parsed;
+      } catch {
+        upstream = text || "[empty response body]";
+      }
+    } catch (error) {
+      upstream = `Unable to read upstream error body: ${sanitizeErrorMessage(error)}`;
+    }
+    const diagnostics = {
+      method: init.method || "GET",
+      url: sanitizeErrorMessage(url),
       status: response.status,
+      statusText: sanitizeErrorMessage(response.statusText),
+      elapsedMs: Date.now() - startedAt,
+      responseHeaders: Object.fromEntries(
+        ["content-type", "retry-after", "x-request-id", "x-goog-request-id"]
+          .filter((name) => response.headers.has(name))
+          .map((name) => [name, sanitizeErrorMessage(response.headers.get(name))])
+      ),
+      upstream: sanitizeUpstreamDetails(upstream),
+    };
+    const message = sanitizeErrorMessage(
+      `Enterprise request failed (HTTP ${response.status}): ${JSON.stringify(diagnostics)}`
+    );
+    console.error("[agy-enterprise] Upstream request failed", JSON.stringify(diagnostics, null, 2));
+    throw Object.assign(new Error(message), {
+      status: response.status,
+      diagnostics,
     });
+  }
   return response.json();
 }
 export async function fetchEnterpriseLicenses(accessToken: string, signal?: AbortSignal) {

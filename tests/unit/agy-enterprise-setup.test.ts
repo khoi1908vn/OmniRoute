@@ -94,6 +94,8 @@ test("server setup keeps tokens pending across discovery failure, pins selected 
   assert.equal(authorize.status, 200);
   const owner = authorize.headers.get("set-cookie")!.split(";")[0];
   const auth = await authorize.json();
+  assert.equal(auth.codeVerifier, undefined);
+  assert.equal(new URL(auth.authUrl).searchParams.get("code_challenge_method"), "S256");
   const exchanged = await handleEnterpriseOAuth(
     request("exchange", owner, {
       code: "synthetic-code",
@@ -119,7 +121,7 @@ test("server setup keeps tokens pending across discovery failure, pins selected 
     "licenses"
   );
   assert.equal(failed.status, 503);
-  assert.equal((await failed.text()).includes("private upstream"), false);
+  assert.match(await failed.text(), /synthetic private upstream error/);
   infoFails = false;
   const partial = await handleEnterpriseOAuth(
     request(`licenses?setupId=${setup.setupId}`, owner),
@@ -129,7 +131,7 @@ test("server setup keeps tokens pending across discovery failure, pins selected 
   const partialData = await partial.json();
   assert.equal(partialData.email, "person@example.com");
   assert.match(partialData.discoveryError, /403/);
-  assert.equal(JSON.stringify(partialData).includes("private license failure"), false);
+  assert.match(partialData.discoveryError, /private license failure/);
   const retry = await handleEnterpriseOAuth(
     request(`licenses?setupId=${setup.setupId}`, owner),
     "licenses"

@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { generateAuthData, exchangeTokens, resolveBrowserOAuthRedirectUri } from "./providers";
+import { generateAuthData, exchangeTokens } from "./providers";
+import { AGY_ENTERPRISE_CONFIG } from "./constants/oauth";
 import { enterprisePendingSetup } from "./enterprisePendingSetup";
 import { upsertEnterpriseOAuthConnection, getProviderConnectionById } from "@/lib/db/providers";
 import { resolveProxyForProvider } from "@/models";
@@ -26,12 +27,19 @@ import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error.ts";
 import { syncToCloudIfEnabled } from "./connectionPersistence";
 
 const COOKIE = "enterprise_setup_owner";
-const authorizations = new Map<string, { owner: string; expiresAt: number; redirectUri: string }>();
+const authorizations = new Map<
+  string,
+  {
+    owner: string;
+    expiresAt: number;
+    redirectUri: string;
+    codeVerifier: string;
+    clientId: string;
+  }
+>();
 const uuid = z.string().uuid();
 const exchangeSchema = z.object({
-  code: z.string().min(1).max(8192),
-  redirectUri: z.string().url(),
-  codeVerifier: z.string().optional(),
+  code: z.string().trim().min(1).max(8192),
   state: z.string().min(1).max(512),
   connectionId: uuid.optional(),
 });
@@ -67,22 +75,22 @@ export async function handleEnterpriseOAuth(request: Request, action: string): P
     let owner = cookie(request, COOKIE);
     if (action === "authorize" && request.method === "GET") {
       if (!owner || !/^[a-f0-9]{64}$/.test(owner)) owner = randomBytes(32).toString("hex");
-      const query = new URL(request.url).searchParams;
-      const redirectUri = resolveBrowserOAuthRedirectUri(
-        "agy-enterprise",
-        query.get("redirect_uri") || "http://localhost:8080/callback"
-      );
+      const redirectUri = AGY_ENTERPRISE_CONFIG.redirectUri;
       const data = generateAuthData("agy-enterprise", redirectUri);
+      const binding = await ownerBinding(request, owner);
       for (const [state, entry] of authorizations)
         if (entry.expiresAt <= Date.now()) authorizations.delete(state);
       if (authorizations.size >= 1000)
         throw new Error("Too many pending Enterprise authorizations");
       authorizations.set(data.state, {
-        owner: await ownerBinding(request, owner),
+        owner: binding,
         expiresAt: Date.now() + 15 * 60 * 1000,
         redirectUri,
+        codeVerifier: data.codeVerifier,
+        clientId: AGY_ENTERPRISE_CONFIG.clientId,
       });
-      const response = NextResponse.json(data);
+      const { codeVerifier: _verifier, ...browserData } = data;
+      const response = NextResponse.json(browserData);
       response.cookies.set(COOKIE, owner, {
         httpOnly: true,
         sameSite: "strict",
@@ -103,8 +111,7 @@ export async function handleEnterpriseOAuth(request: Request, action: string): P
         if (
           !authorization ||
           authorization.expiresAt <= Date.now() ||
-          authorization.owner !== binding ||
-          authorization.redirectUri !== body.redirectUri
+          authorization.owner !== binding
         )
           throw new Error("Invalid Enterprise OAuth state");
         let target: { id: string; identity: string } | undefined;
@@ -114,13 +121,21 @@ export async function handleEnterpriseOAuth(request: Request, action: string): P
             throw new Error("Enterprise reauthorization target unavailable");
           target = { id: body.connectionId, identity: enterpriseIdentitySnapshot(row) };
         }
+        // Target lookup may yield: recheck before claiming this one-shot authorization.
+        if (
+          authorizations.get(body.state) !== authorization ||
+          authorization.expiresAt <= Date.now()
+        )
+          throw new Error("Invalid Enterprise OAuth state");
         authorizations.delete(body.state);
+        if (authorization.clientId !== AGY_ENTERPRISE_CONFIG.clientId)
+          throw new Error("Enterprise OAuth client changed. Start Google sign-in again.");
         // No user-info or discovery here: credentials enter pending memory immediately.
         const tokens = await exchangeTokens(
           "agy-enterprise",
           body.code,
-          body.redirectUri,
-          body.codeVerifier,
+          authorization.redirectUri,
+          authorization.codeVerifier,
           body.state
         );
         return NextResponse.json(enterprisePendingSetup.create(binding, tokens, target));

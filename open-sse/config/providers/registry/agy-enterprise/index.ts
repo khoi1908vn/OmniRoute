@@ -11,10 +11,10 @@ export const agyEnterpriseProvider: RegistryEntry = {
   authHeader: "bearer",
   forceStream: true,
   oauth: {
-    clientIdEnv: "ANTIGRAVITY_OAUTH_CLIENT_ID",
-    clientIdDefault: resolvePublicCred("antigravity_id"),
-    clientSecretEnv: "ANTIGRAVITY_OAUTH_CLIENT_SECRET",
-    clientSecretDefault: resolvePublicCred("antigravity_alt"),
+    clientIdEnv: "AGY_ENTERPRISE_OAUTH_CLIENT_ID",
+    clientIdDefault: resolvePublicCred("agy_enterprise_id"),
+    clientSecretEnv: "AGY_ENTERPRISE_OAUTH_CLIENT_SECRET",
+    clientSecretDefault: resolvePublicCred("agy_enterprise_alt"),
   },
   models: [
     {

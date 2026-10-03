@@ -24,6 +24,15 @@ const FAKE_GOCSPX = ["G", "O", "C", "S", "P", "X"].join("") + "-" + "y".repeat(2
 const FAKE_GOOGLE_CLIENT_ID =
   "9".repeat(12) + "-" + "abc".repeat(10) + "ab" + ".apps.googleusercontent.com";
 
+test("Enterprise public defaults have Google client shapes and a distinct issuer", () => {
+  assert.match(
+    resolvePublicCred("agy_enterprise_id"),
+    /^884354919052-[a-z0-9]+\.apps\.googleusercontent\.com$/
+  );
+  assert.ok(resolvePublicCred("agy_enterprise_alt").startsWith("G" + "OCSPX-"));
+  assert.notEqual(resolvePublicCred("agy_enterprise_id"), resolvePublicCred("antigravity_id"));
+});
+
 test("resolvePublicCred('gemini_id') returns a Google OAuth client ID format", () => {
   const v = resolvePublicCred("gemini_id");
   assert.match(v, /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/);

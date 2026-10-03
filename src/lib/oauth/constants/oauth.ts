@@ -245,6 +245,15 @@ export const ANTIGRAVITY_CONFIG = {
 // public credentials and Code Assist endpoints — no new embedded secret — and the same
 // loopback-redirect browser flow (popup locally; paste-the-callback-URL on remote/headless),
 // so the entire existing antigravity OAuth UI machinery applies unchanged.
+export const AGY_ENTERPRISE_CONFIG = {
+  clientId: resolvePublicCred("agy_enterprise_id", "AGY_ENTERPRISE_OAUTH_CLIENT_ID"),
+  clientSecret: resolvePublicCred("agy_enterprise_alt", "AGY_ENTERPRISE_OAUTH_CLIENT_SECRET"),
+  authorizeUrl: "https://accounts.google.com/o/oauth2/auth",
+  tokenUrl: "https://oauth2.googleapis.com/token",
+  redirectUri: "https://antigravity.google/oauth-callback",
+  scopes: [...ANTIGRAVITY_CONFIG.scopes, "openid"],
+};
+
 export const AGY_CONFIG = {
   clientId: resolvePublicCred("antigravity_id", "ANTIGRAVITY_OAUTH_CLIENT_ID"),
   clientSecret: resolvePublicCred("antigravity_alt", "ANTIGRAVITY_OAUTH_CLIENT_SECRET"),

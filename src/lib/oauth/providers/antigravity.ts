@@ -74,7 +74,7 @@ function getPostExchangeHeaders(
 }
 
 export function buildAntigravityAuthUrl(
-  config: AntigravityOAuthConfig,
+  config: Pick<AntigravityOAuthConfig, "clientId" | "authorizeUrl" | "scopes">,
   redirectUri: string,
   state: string,
   codeChallenge?: string
