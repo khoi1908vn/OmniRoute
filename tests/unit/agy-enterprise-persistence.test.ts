@@ -114,6 +114,13 @@ test("direct DB and OAuth persistence converge on account/project/location, reta
 test("Enterprise reauth rejects mismatched and deleted targets without retargeting or recreating", async () => {
   const existing = await persistOAuthConnection("agy-enterprise", credentials("reauth-project"));
   await assert.rejects(
+    persistOAuthConnection(
+      "agy-enterprise",
+      credentials("reauth-project", "subject-one", "eu"),
+      existing.id
+    )
+  );
+  await assert.rejects(
     persistOAuthConnection("agy-enterprise", credentials("different-project"), existing.id)
   );
   await assert.rejects(

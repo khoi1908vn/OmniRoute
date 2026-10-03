@@ -7,6 +7,7 @@ import { upsertEnterpriseOAuthConnection, getProviderConnectionById } from "@/li
 import { resolveProxyForProvider } from "@/models";
 import {
   enterpriseProjectSchema,
+  enterpriseLocationSchema,
   enterpriseContextSchema,
   enterpriseIdentitySnapshot,
 } from "@omniroute/open-sse/utils/agyEnterprise.ts";
@@ -38,6 +39,7 @@ const actionSchema = z.object({
   setupId: uuid,
   licenseId: uuid.optional(),
   projectId: enterpriseProjectSchema.optional(),
+  location: enterpriseLocationSchema.default("us"),
 });
 
 function cookie(request: Request, name: string) {
@@ -229,6 +231,7 @@ export async function handleEnterpriseOAuth(request: Request, action: string): P
         const license = await assignEnterpriseLicense(
           ticket.tokens.accessToken,
           body.projectId,
+          body.location,
           ticket.controller.signal
         );
         const licenses = enterprisePendingSetup.addLicenses(body.setupId, binding, [license]);

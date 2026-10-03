@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { EnterpriseLicense } from "@omniroute/open-sse/utils/agyEnterprise.ts";
+import {
+  enterpriseContextSchema,
+  type EnterpriseLicense,
+} from "@omniroute/open-sse/utils/agyEnterprise.ts";
 
 export type EnterpriseTokens = {
   accessToken: string;
@@ -80,7 +83,7 @@ export class EnterprisePendingSetup {
     return [...ticket.licenses].map(([licenseId, license]) => ({
       licenseId,
       ...license,
-      supported: license.location === "us",
+      supported: enterpriseContextSchema.safeParse(license).success,
     }));
   }
   cancel(id: string, owner: string) {
@@ -105,7 +108,8 @@ export class EnterprisePendingSetup {
     if (ticket.result) return Promise.resolve(ticket.result);
     if (ticket.attempt) return ticket.attempt;
     const license = ticket.licenses.get(licenseId);
-    if (!license || license.location !== "us") throw new Error("Select a verified US license");
+    if (!enterpriseContextSchema.safeParse(license).success)
+      throw new Error("Select a verified US or EU license");
     ticket.selection = licenseId;
     ticket.state = "finalizing";
     const attempt = (async () => {

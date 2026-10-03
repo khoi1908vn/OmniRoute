@@ -7,8 +7,10 @@ export const enterpriseLicenseSchema = z.object({
   userTier: z.string().min(1).max(200),
   tierDisplayName: z.string().max(200).optional(),
 });
+export const enterpriseLocationSchema = z.enum(["us", "eu"]);
+export type EnterpriseLocation = z.infer<typeof enterpriseLocationSchema>;
 export const enterpriseContextSchema = enterpriseLicenseSchema.extend({
-  location: z.literal("us"),
+  location: enterpriseLocationSchema,
 });
 export type EnterpriseContext = z.infer<typeof enterpriseContextSchema>;
 export type EnterpriseLicense = z.infer<typeof enterpriseLicenseSchema>;

@@ -99,7 +99,7 @@ test("validation errors preserve pending tokens and allow a retry, unsupported l
   const setup = store.create("owner", tokens());
   const entries = store.addLicenses(setup.setupId, "owner", [
     license,
-    { ...license, location: "eu" },
+    { ...license, location: "global" },
   ]);
   assert.equal(entries[1].supported, false);
   assert.throws(() =>
@@ -135,4 +135,21 @@ test("validation errors preserve pending tokens and allow a retry, unsupported l
     ).connectionId,
     "saved"
   );
+});
+
+test("EU licenses are supported and finalizable", async () => {
+  const store = new EnterprisePendingSetup();
+  const setup = store.create("owner", tokens());
+  const [entry] = store.addLicenses(setup.setupId, "owner", [{ ...license, location: "eu" }]);
+  assert.equal(entry.supported, true);
+  const result = await store.finalize(
+    setup.setupId,
+    "owner",
+    entry.licenseId,
+    async (_ticket, selected) => {
+      assert.equal(selected.location, "eu");
+    },
+    () => "eu-connection"
+  );
+  assert.equal(result.connectionId, "eu-connection");
 });

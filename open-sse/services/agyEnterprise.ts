@@ -3,12 +3,17 @@ import {
   enterpriseContextSchema,
   enterpriseLicenseSchema,
   type EnterpriseContext,
+  type EnterpriseLocation,
 } from "@omniroute/open-sse/utils/agyEnterprise.ts";
 
 export const ENTERPRISE_US_HOST = "https://businessaicode.us.rep.googleapis.com";
+const ENTERPRISE_HOSTS: Record<EnterpriseLocation, string> = {
+  us: ENTERPRISE_US_HOST,
+  eu: "https://businessaicode.eu.rep.googleapis.com",
+};
 export function enterpriseResource(context: EnterpriseContext): string {
   const checked = enterpriseContextSchema.parse(context);
-  return `${ENTERPRISE_US_HOST}/v1beta/projects/${encodeURIComponent(checked.projectId)}/locations/us`;
+  return `${ENTERPRISE_HOSTS[checked.location]}/v1beta/projects/${encodeURIComponent(checked.projectId)}/locations/${checked.location}`;
 }
 export function enterpriseHeaders(accessToken: string): Record<string, string> {
   return {
@@ -51,16 +56,20 @@ export async function fetchEnterpriseLicenses(accessToken: string, signal?: Abor
 export async function assignEnterpriseLicense(
   accessToken: string,
   projectId: string,
+  location: EnterpriseLocation,
   signal?: AbortSignal
 ) {
-  const resource = enterpriseResource({ projectId, location: "us", userTier: "pending" });
-  return z.object({ license: enterpriseLicenseSchema }).parse(
+  const resource = enterpriseResource({ projectId, location, userTier: "pending" });
+  const license = z.object({ license: enterpriseLicenseSchema }).parse(
     await enterpriseFetchJson(`${resource}:selfAssignLicense`, accessToken, {
       method: "POST",
-      body: JSON.stringify({ parent: `projects/${projectId}/locations/us` }),
+      body: JSON.stringify({ parent: `projects/${projectId}/locations/${location}` }),
       signal,
     })
   ).license;
+  if (license.projectId !== projectId || license.location !== location)
+    throw new Error("Enterprise assignment returned a different project/location context");
+  return license;
 }
 export async function fetchEnterpriseConfig(
   accessToken: string,

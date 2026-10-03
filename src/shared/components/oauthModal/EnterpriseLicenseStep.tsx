@@ -53,6 +53,7 @@ export default function EnterpriseLicenseStep({
   const [selected, setSelected] = useState("");
   const [email, setEmail] = useState("");
   const [project, setProject] = useState("");
+  const [location, setLocation] = useState("us");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [expired, setExpired] = useState(() => Date.now() >= setup.expiresAt);
@@ -89,7 +90,7 @@ export default function EnterpriseLicenseStep({
       const data = await enterpriseSetupAction(
         action,
         setup.setupId,
-        action === "finalize" ? { licenseId: selected } : { projectId: project.trim() }
+        action === "finalize" ? { licenseId: selected } : { projectId: project.trim(), location }
       );
       if (data.status === "completed") onSaved();
       else {
@@ -135,7 +136,7 @@ export default function EnterpriseLicenseStep({
             <span>
               {license.projectId} · {license.location} ·{" "}
               {license.tierDisplayName || license.userTier}
-              {!license.supported && " — unsupported location; US only"}
+              {!license.supported && " — unsupported location; US and EU only"}
             </span>
           </label>
         ))}
@@ -156,9 +157,22 @@ export default function EnterpriseLicenseStep({
           placeholder="my-enterprise-project"
         />
       </label>
+      <label className="flex flex-col gap-1">
+        License region
+        <select
+          aria-label="License region"
+          className="rounded border border-border p-2"
+          value={location}
+          disabled={busy}
+          onChange={(event) => setLocation(event.target.value)}
+        >
+          <option value="us">US</option>
+          <option value="eu">EU</option>
+        </select>
+      </label>
       <p className="text-sm text-text-muted">
-        Verify project requests a US license assignment upstream. Closing this setup cannot undo
-        that assignment.
+        Verify project requests a license assignment in the selected region. Closing this setup
+        cannot undo that assignment.
       </p>
       <Button
         variant="secondary"

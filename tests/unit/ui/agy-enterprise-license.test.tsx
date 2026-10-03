@@ -30,9 +30,9 @@ const licenses = [
     supported: true,
   },
   {
-    licenseId: "eu-license",
+    licenseId: "global-license",
     projectId: "project-two",
-    location: "eu",
+    location: "global",
     userTier: "standard",
     supported: false,
   },
@@ -89,7 +89,9 @@ it("single supported license preselects; discovery never saves; explicit Save co
   const saved = await render();
   expect(saved).not.toHaveBeenCalled();
   expect(element.querySelector<HTMLInputElement>('input[value="us-license"]')?.checked).toBe(true);
-  expect(element.querySelector<HTMLInputElement>('input[value="eu-license"]')?.disabled).toBe(true);
+  expect(element.querySelector<HTMLInputElement>('input[value="global-license"]')?.disabled).toBe(
+    true
+  );
   expect(element.textContent).toContain("unsupported location");
   await act(async () => button("Save").click());
   expect(saved).toHaveBeenCalledTimes(1);
@@ -97,6 +99,37 @@ it("single supported license preselects; discovery never saves; explicit Save co
     setupId: setup.setupId,
     licenseId: "us-license",
   });
+});
+
+it("manual setup defaults to US and sends selected EU region, then saves the returned license", async () => {
+  const custom = { ...licenses[0], licenseId: "eu-license", location: "eu" };
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
+    Response.json(
+      String(input).includes("licenses?")
+        ? { email: "person@example.com", licenses }
+        : String(input).endsWith("verify-project")
+          ? { licenses: [...licenses, custom], verifiedLicenseId: custom.licenseId }
+          : { status: "completed" }
+    )
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  await render();
+  const region = element.querySelector<HTMLSelectElement>('select[aria-label="License region"]');
+  expect(region?.value).toBe("us");
+  await act(async () => {
+    region!.value = "eu";
+    region!.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  enterProject("project-one");
+  await act(async () => button("Verify project").click());
+  expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+    setupId: setup.setupId,
+    projectId: "project-one",
+    location: "eu",
+  });
+  expect(element.querySelector<HTMLInputElement>('input[value="eu-license"]')?.checked).toBe(true);
+  await act(async () => button("Save").click());
+  expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body)).licenseId).toBe("eu-license");
 });
 
 it("discovery error preserves setup and retry loads licenses", async () => {

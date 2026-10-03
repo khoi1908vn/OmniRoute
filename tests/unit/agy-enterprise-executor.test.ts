@@ -75,10 +75,17 @@ test("registry selects Enterprise executor and OpenAI text remains root Gemini w
     executor.buildUrl(model, false, 0, credentials),
     /^https:\/\/businessaicode\.us\.rep\.googleapis\.com\/v1beta\/projects\/project-one\/locations\/us:streamGenerateContent\?alt=sse$/
   );
-  assert.throws(() =>
+  assert.equal(
     executor.buildUrl(model, true, 0, {
       ...credentials,
       providerSpecificData: { ...context, location: "eu" },
+    }),
+    "https://businessaicode.eu.rep.googleapis.com/v1beta/projects/project-one/locations/eu:streamGenerateContent?alt=sse"
+  );
+  assert.throws(() =>
+    executor.buildUrl(model, true, 0, {
+      ...credentials,
+      providerSpecificData: { ...context, location: "global" },
     })
   );
   assert.throws(

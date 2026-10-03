@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { handleEnterpriseOAuth } from "../../src/lib/oauth/enterpriseSetup.ts";
 import { getProviderConnections, getProviderConnectionById } from "../../src/lib/db/providers.ts";
 import { enterprisePendingSetup } from "../../src/lib/oauth/enterprisePendingSetup.ts";
-import { fetchEnterpriseLicenses } from "../../open-sse/services/agyEnterprise.ts";
+import {
+  fetchEnterpriseLicenses,
+  assignEnterpriseLicense,
+} from "../../open-sse/services/agyEnterprise.ts";
 
 test("license discovery matches the captured Enterprise request without assignment", async (t) => {
   const calls: Request[] = [];
@@ -150,7 +153,7 @@ test("server setup keeps tokens pending across discovery failure, pins selected 
     "licenses"
   );
   const licenses = (await discovery.json()).licenses;
-  assert.equal(licenses[1].supported, false);
+  assert.equal(licenses[1].supported, true);
   const payload = {
     setupId: setup.setupId,
     licenseId: licenses[0].licenseId,
@@ -183,6 +186,93 @@ test("server setup keeps tokens pending across discovery failure, pins selected 
     calls.some((url) => /loadCodeAssist|onboardUser|fetchAvailableModels/.test(url)),
     false
   );
+});
+
+test("EU manual verification pins assignment and config to the selected region", async (t) => {
+  let wrongContext = true;
+  const calls: string[] = [];
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.includes("oauth2.googleapis.com/token"))
+      return Response.json({ access_token: "synthetic-access", expires_in: 3600 });
+    if (url.includes("oauth2/v2/userinfo"))
+      return Response.json({ id: "eu-subject", email: "eu@example.com", verified_email: true });
+    if (url.endsWith(":fetchLicenses")) return Response.json({ licenses: [] });
+    if (url.endsWith(":selfAssignLicense")) {
+      assert.equal(
+        url,
+        "https://businessaicode.eu.rep.googleapis.com/v1beta/projects/project-one/locations/eu:selfAssignLicense"
+      );
+      assert.equal(init?.method, "POST");
+      assert.deepEqual(JSON.parse(String(init?.body)), {
+        parent: "projects/project-one/locations/eu",
+      });
+      return Response.json({
+        license: {
+          projectId: "project-one",
+          location: wrongContext ? "us" : "eu",
+          userTier: "standard",
+        },
+      });
+    }
+    assert.equal(
+      url,
+      "https://businessaicode.eu.rep.googleapis.com/v1beta/projects/project-one/locations/eu:fetchConfig?entitlement.userTier=standard"
+    );
+    return Response.json({ adminControls: {} });
+  });
+  const authorized = await handleEnterpriseOAuth(request("authorize"), "authorize");
+  const owner = authorized.headers.get("set-cookie")!.split(";")[0];
+  const auth = await authorized.json();
+  const exchange = await handleEnterpriseOAuth(
+    request("exchange", owner, {
+      code: "synthetic",
+      redirectUri: auth.redirectUri,
+      state: auth.state,
+    }),
+    "exchange"
+  );
+  const { setupId } = await exchange.json();
+  await handleEnterpriseOAuth(request(`licenses?setupId=${setupId}`, owner), "licenses");
+  assert.equal(
+    calls.some((url) => url.includes(":selfAssignLicense")),
+    false
+  );
+  const body = { setupId, projectId: "project-one", location: "eu" };
+  const mismatch = await handleEnterpriseOAuth(
+    request("verify-project", owner, body),
+    "verify-project"
+  );
+  assert.equal(mismatch.status, 400);
+  wrongContext = false;
+  const verified = await handleEnterpriseOAuth(
+    request("verify-project", owner, body),
+    "verify-project"
+  );
+  assert.equal(verified.status, 200);
+  const selected = await verified.json();
+  assert.equal(selected.licenses[0].location, "eu");
+  const finalized = await handleEnterpriseOAuth(
+    request("finalize", owner, {
+      setupId,
+      licenseId: selected.verifiedLicenseId,
+      location: "us",
+    }),
+    "finalize"
+  );
+  assert.equal(finalized.status, 200);
+  const row = await getProviderConnectionById((await finalized.json()).connectionId);
+  assert.equal((row.providerSpecificData as Record<string, unknown>).location, "eu");
+});
+
+test("manual assignment rejects a returned license for another project", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({
+      license: { projectId: "project-wrong", location: "us", userTier: "standard" },
+    })
+  );
+  await assert.rejects(assignEnterpriseLicense("synthetic", "project-one", "us"), /context/);
 });
 
 test("setup rejects foreign origins and malformed or unsupported sibling completion actions", async () => {
