@@ -12,10 +12,40 @@ Its dashboard icon reuses the AGY brand in both color and monochrome modes.
 
 ## Connect
 
-Open **Dashboard → Providers → Antigravity Enterprise**, sign in with Google, and
-review the discovered project, location and tier. Click **Save** to validate the
+Open **Dashboard → Providers → Antigravity Enterprise** and open the Google sign-in
+link. After sign-in, Google's hosted Antigravity callback at
+`https://antigravity.google/oauth-callback` displays an authorization code. Copy that
+code and paste it into OmniRoute, then click **Connect**. This manual code-paste flow
+works on localhost, LAN and remote dashboards. If the browser window is blocked,
+use the sign-in link in the modal. OmniRoute does not host or automatically receive
+the hosted callback. A full callback URL is also accepted when its host, path and
+state match this sign-in.
+
+Review the discovered project, location and tier. Click **Save** to validate the
 selected configuration and persist the connection. OAuth exchange alone does not
 save an account. Locations other than US and EU are visible but disabled.
+
+OmniRoute creates a fresh PKCE challenge for each sign-in and retains the verifier
+in an owner-bound server session for 15 minutes. Exchange uses the stored verifier,
+callback and issuing client; browser fields cannot override them. The authorization
+is consumed once before token exchange. If exchange fails, click **Try again** to
+start a fresh sign-in. Codes from another AGY login cannot be exchanged with this
+session's verifier. Server restart also requires a new sign-in.
+
+Enterprise uses the public hosted-callback OAuth client verified in AGY CLI 1.2.16,
+separate from personal Antigravity. Leave `AGY_ENTERPRISE_OAUTH_CLIENT_ID` and
+`AGY_ENTERPRISE_OAUTH_CLIENT_SECRET` unset for the embedded defaults. Set both only
+to override the matching client pair; the callback remains fixed. Personal
+`ANTIGRAVITY_OAUTH_CLIENT_ID` and `ANTIGRAVITY_OAUTH_CLIENT_SECRET` do not configure
+Enterprise. Override clients must support that registered callback and the required
+scopes.
+
+Refresh uses the client recorded when the tokens were issued. Legacy Enterprise
+connections marked `builtin`, connections without an issuer, and tokens issued by
+a client that no longer matches configuration require reauthorization. Restore the
+issuing client configuration or sign in again; OmniRoute never refreshes these
+tokens with the personal client. Reauthorizing an existing connection retains its
+account/project/region identity checks.
 
 If discovery fails, retry within the same setup. Pending credentials remain in
 server memory for 15 minutes from exchange. Expiry or server restart requires a
@@ -57,10 +87,9 @@ request payloads cannot override it.
   `GET https://businessaicode.googleapis.com/v1beta:fetchLicenses` without a body or
   region parameter, and model discovery keeps its fixed Cloud Code endpoint.
 - Tool calls, images and locations other than US/EU are unsupported.
-- OAuth currently reuses the existing Antigravity CLI Google client and scopes.
-  The screenshots did not expose the actual Enterprise OAuth issuer or scopes;
-  the follow-up does not change the OAuth client or scopes. Enterprise transport uses
-  the captured CLI fingerprint independently of the personal provider's defaults.
+- OAuth requests Cloud Platform, user-info email/profile, cclog,
+  experimentsandconfigs and `openid` scopes using PKCE S256. Enterprise transport
+  uses the captured CLI fingerprint independently of the personal provider's defaults.
 - Usage refresh shows Google account quota buckets as advisory observations with
   source and observation time. Their scope for the selected license is unverified.
   A full fraction does not mean unlimited. Observations do not control routing,
@@ -74,12 +103,13 @@ they do not prove live upstream acceptance or authentic tool/signature replay.
 
 ## Verification limits and Global follow-up
 
-The follow-up's request fidelity, US/EU routing, model cache, custom dispatch and icon
-behavior are covered by automated tests. Live acceptance remains open: successful
+Request fidelity, US/EU routing, model cache, custom dispatch, icon behavior, manual
+OAuth, PKCE ownership and issuer-bound refresh are covered by automated tests.
+Live acceptance remains open: successful token exchange, automatic
 license discovery for the account reporting HTTP 403, EU assignment/config/inference,
-and another discovered model through both API surfaces. Matching the captured headers
-alone does not establish that the reported 403 is fixed. No new assignment was made
-during this follow-up's validation.
+refresh with the same issuer, and another discovered model through both API surfaces.
+Offline tests do not establish that the reported 403 is fixed. No new assignment was
+made during this follow-up's validation.
 
 **Global TODO:** the operator verified the host `businessaicode.googleapis.com`, but
 the resource location and full assignment/config/inference contract still need a
@@ -92,6 +122,7 @@ From the implementation worktree, PowerShell:
 
 ```powershell
 $env:DATA_DIR = Join-Path (Get-Location) '_cache/agy-enterprise-local'
+$env:NEXT_DIST_DIR = '.build/agy-enterprise-oauth'
 $env:HOST = '127.0.0.1'
 $env:PORT = $env:OMNIROUTE_PORT = $env:API_PORT = $env:DASHBOARD_PORT = '20129'
 node --max-old-space-size=8192 scripts/dev/run-next.mjs dev

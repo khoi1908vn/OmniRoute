@@ -238,13 +238,7 @@ export const ANTIGRAVITY_CONFIG = {
   fetchAvailableModelsEndpoint: getAntigravityFetchAvailableModelsUrls()[0],
 };
 
-// Antigravity CLI (`agy`) OAuth Configuration.
-// `agy` is the standalone Antigravity CLI; it authenticates against the EXACT same Google
-// consumer-OAuth client as ANTIGRAVITY_CONFIG (the client_id was verified byte-for-byte
-// identical: 1071006060591-tmhssin2h21lcre235vtolojh4g403ep). It reuses the antigravity
-// public credentials and Code Assist endpoints — no new embedded secret — and the same
-// loopback-redirect browser flow (popup locally; paste-the-callback-URL on remote/headless),
-// so the entire existing antigravity OAuth UI machinery applies unchanged.
+// AGY Enterprise hosted-callback OAuth (public CLI client, PKCE S256).
 export const AGY_ENTERPRISE_CONFIG = {
   clientId: resolvePublicCred("agy_enterprise_id", "AGY_ENTERPRISE_OAUTH_CLIENT_ID"),
   clientSecret: resolvePublicCred("agy_enterprise_alt", "AGY_ENTERPRISE_OAUTH_CLIENT_SECRET"),
@@ -254,6 +248,13 @@ export const AGY_ENTERPRISE_CONFIG = {
   scopes: [...ANTIGRAVITY_CONFIG.scopes, "openid"],
 };
 
+// Antigravity CLI (`agy`) OAuth Configuration.
+// `agy` is the standalone Antigravity CLI; it authenticates against the EXACT same Google
+// consumer-OAuth client as ANTIGRAVITY_CONFIG (the client_id was verified byte-for-byte
+// identical: 1071006060591-tmhssin2h21lcre235vtolojh4g403ep). It reuses the antigravity
+// public credentials and Code Assist endpoints — no new embedded secret — and the same
+// loopback-redirect browser flow (popup locally; paste-the-callback-URL on remote/headless),
+// so the entire existing antigravity OAuth UI machinery applies unchanged.
 export const AGY_CONFIG = {
   clientId: resolvePublicCred("antigravity_id", "ANTIGRAVITY_OAUTH_CLIENT_ID"),
   clientSecret: resolvePublicCred("antigravity_alt", "ANTIGRAVITY_OAUTH_CLIENT_SECRET"),

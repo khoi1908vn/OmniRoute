@@ -5,7 +5,11 @@ import { spawnSync } from "node:child_process";
 import { handleEnterpriseOAuth } from "../../src/lib/oauth/enterpriseSetup.ts";
 import { AGY_ENTERPRISE_CONFIG } from "../../src/lib/oauth/constants/oauth.ts";
 import { agyEnterprise } from "../../src/lib/oauth/providers/agy-enterprise.ts";
-import { getProviderConnections } from "../../src/lib/db/providers.ts";
+import {
+  getProviderConnections,
+  createProviderConnection,
+  getProviderConnectionById,
+} from "../../src/lib/db/providers.ts";
 import { PROVIDERS } from "../../open-sse/config/constants.ts";
 
 const origin = "http://localhost:20128";
@@ -167,17 +171,29 @@ test("concurrent exchange consumes authorization once", async (t) => {
     await new Promise((resolve) => setTimeout(resolve, 5));
     return tokenResponse();
   });
-  const { owner, data } = await authorize();
-  const responses = await Promise.all(
-    [1, 2].map(() =>
-      handleEnterpriseOAuth(
-        request("exchange", owner, { code: "synthetic", state: data.state }),
-        "exchange"
+  const target = await createProviderConnection({
+    provider: "agy-enterprise",
+    authType: "oauth",
+    email: "reauth@example.com",
+    projectId: "project-one",
+    accessToken: "existing-access",
+    providerSpecificData: { projectId: "project-one", location: "us", userTier: "standard" },
+  });
+  for (const connectionId of [undefined, target.id]) {
+    const { owner, data } = await authorize();
+    const before = calls;
+    const responses = await Promise.all(
+      [1, 2].map(() =>
+        handleEnterpriseOAuth(
+          request("exchange", owner, { code: "synthetic", state: data.state, connectionId }),
+          "exchange"
+        )
       )
-    )
-  );
-  assert.deepEqual(responses.map((response) => response.status).sort(), [200, 400]);
-  assert.equal(calls, 1);
+    );
+    assert.deepEqual(responses.map((response) => response.status).sort(), [200, 400]);
+    assert.equal(calls - before, 1);
+  }
+  assert.equal((await getProviderConnectionById(target.id)).accessToken, "existing-access");
 });
 
 test("foreign code fails PKCE and cannot create setup or connection", async (t) => {

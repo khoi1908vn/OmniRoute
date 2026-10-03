@@ -6,10 +6,7 @@ import { getExecutor } from "../../open-sse/executors/index.ts";
 import { openaiToGeminiRequest } from "../../open-sse/translator/request/openai-to-gemini.ts";
 import { parseSSEToGeminiResponse } from "../../open-sse/handlers/sseParser/geminiResponse.ts";
 import { shouldSkipCredentialRefresh } from "../../open-sse/handlers/chatCore/skipCredentialRefresh.ts";
-import {
-  selectGoogleRefreshClient,
-  BUILTIN_ANTIGRAVITY_CLIENT,
-} from "../../open-sse/services/tokenRefresh/googleClientBinding.ts";
+import { selectGoogleRefreshClient } from "../../open-sse/services/tokenRefresh/googleClientBinding.ts";
 import { getEnterpriseUsage } from "../../open-sse/services/usage/agyEnterprise.ts";
 import { isEmptyContentResponse } from "../../open-sse/services/errorClassifier.ts";
 import {
@@ -174,9 +171,9 @@ test("Enterprise permission failures do not refresh; issuer binding fails closed
     await shouldSkipCredentialRefresh("agy-enterprise", new Response(null, { status: 401 })),
     false
   );
-  assert.deepEqual(
-    selectGoogleRefreshClient("agy-enterprise", "builtin", {}),
-    BUILTIN_ANTIGRAVITY_CLIENT
+  assert.throws(
+    () => selectGoogleRefreshClient("agy-enterprise", "builtin", {}),
+    /issuing OAuth client/
   );
   assert.throws(
     () =>
