@@ -1,14 +1,14 @@
 ---
 title: "Provider Reference"
 version: 3.8.52
-lastUpdated: 2026-10-02
+lastUpdated: 2026-10-03
 ---
 
 # Provider Reference
 
 > **Auto-generated** from `src/shared/constants/providers.ts` — do not edit by hand.
 > Regenerate with: `npm run gen:provider-reference`
-> **Last generated:** 2026-10-02
+> **Last generated:** 2026-10-03
 
 Total providers: **359**. See category breakdown below.
 
@@ -54,7 +54,7 @@ Use the dashboard at `/dashboard/providers` to enable, configure, and test each 
 | ID | Alias | Name | Tags | Website | Notes |
 |----|-------|------|------|---------|-------|
 | `agy` | `agy` | Antigravity CLI | OAuth | [link](https://antigravity.google) | Import your Antigravity CLI (`agy`) login (paste/upload its token file), auto-detect a local CLI login, or sign in with Google. Shares the Antigravity backend (incl. Claude models). |
-| `agy-enterprise` | `agy-enterprise` | Antigravity Enterprise | OAuth | — | Local preview: sign in with Google, select a US Enterprise license, then Save. Text chat with gemini-3.5-flash-lite; setup expires after 15 minutes. |
+| `agy-enterprise` | `agy-enterprise` | Antigravity Enterprise | OAuth | — | Sign in with Google, select a US or EU Enterprise license, then Save. Discover account-listed text models or add a custom experience ID; availability depends on your license. Setup expires after 15 minutes. |
 | `amazon-q` | `aq` | Amazon Q | OAuth | [link](https://aws.amazon.com/q/developer/) | Uses the same AWS Builder ID or imported refresh-token flow as Kiro, but keeps Amazon Q connections separate. |
 | `antigravity` | — | Antigravity | OAuth | — | — |
 | `claude` | `cc` | Claude Code | OAuth | — | — |
