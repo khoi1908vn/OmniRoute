@@ -1,3 +1,4 @@
+import { extractEnterpriseReplaySchemas } from "../translator/response/openai-responses/toolSchemas.ts";
 import {
   extractRequestToolMetadata,
   resolveResponseToolNameMap,
@@ -2705,6 +2706,15 @@ async function handleChatCoreInner({
     const result = createTranslationFailureResult(statusCode, message, errorType);
     log?.warn?.("TRANSLATE", `Request translation failed: ${result.error}`);
 
+    // Local translation failures happen before the normal provider-attempt sink.
+    // Persist the same bounded, policy-aware terminal log without inventing usage.
+    try {
+      persistAttemptLogs({ status: statusCode, error: result.error,
+        clientResponse: buildErrorBody(statusCode, result.error) });
+    } catch {
+      log?.debug?.("TRANSLATE", "Translation failure logging unavailable");
+    }
+
     trackPendingRequest(model, provider, pendingConnId, false, undefined, pendingRequestId);
     return result;
   }
@@ -2839,6 +2849,8 @@ async function handleChatCoreInner({
     nativeClaudeToolNameMap,
     requestToolIdentityMap
   );
+  const enterpriseReplaySchemas = provider === "agy-enterprise"
+    ? extractEnterpriseReplaySchemas(body, toolNameMap) : undefined;
   delete translatedBody._toolNameMap;
   delete translatedBody._disableToolPrefix;
 
@@ -6365,7 +6377,9 @@ async function handleChatCoreInner({
       }),
       requestedThinking,
       customToolNames,
-      requestToolIdentityMap
+      requestToolIdentityMap,
+      undefined,
+      enterpriseReplaySchemas
     );
   } else {
     log?.debug?.("STREAM", `Standard passthrough mode`);

@@ -14,6 +14,7 @@
 import { normalizePayloadForLog } from "@/lib/logPayloads";
 import { extractSSEErrorMessage } from "../sseParser.ts";
 import { readNonStreamingResponseBody } from "./nonStreamingResponseBody.ts";
+import { parseSSEToGeminiResponse, type GeminiReplayContext } from "../sseParser/geminiResponse.ts";
 import {
   normalizeNonStreamingEventPayload,
   parseNonStreamingSSEPayload,
@@ -64,6 +65,7 @@ export async function parseNonStreamingResponseBody(opts: {
   targetFormat: string;
   model: string;
   log?: LoggerLike;
+  geminiReplayContext?: GeminiReplayContext;
 }): Promise<NonStreamingParseResult> {
   const { providerResponse, upstreamStream, providerHeaders, finalBody, targetFormat, model, log } =
     opts;
@@ -90,20 +92,29 @@ export async function parseNonStreamingResponseBody(opts: {
         `Unexpected ${streamKind} response for non-streaming request — buffering`
       );
     }
-    // Upstream returned an event stream for a non-streaming client; convert best-effort to JSON.
-    const parsedFromSSE = parseNonStreamingSSEPayload(streamPayload, targetFormat, model);
-
-    if (!parsedFromSSE) {
-      // Some executors (e.g. the Devin/Windsurf CLI) always emit text/event-stream, signalling
-      // failure with an error-only chunk (`data: {"error":{"message":"Devin CLI not found..."}}`)
-      // that carries no `choices`. Surface that real, sanitized message instead of the generic 502
-      // so the actionable error is not swallowed (#3324).
-      const surfacedSseError = extractSSEErrorMessage(streamPayload);
-      const invalidSseMessage =
-        surfacedSseError || "Invalid SSE response for non-streaming request";
+    // An upstream error invalidates the buffered result even if earlier chunks contained text.
+    const surfacedSseError = extractSSEErrorMessage(streamPayload);
+    if (surfacedSseError) {
       return {
         kind: "invalid_sse",
-        message: invalidSseMessage,
+        message: surfacedSseError,
+        looksLikeSSE: true,
+        normalizedProviderPayload,
+      };
+    }
+
+    // Upstream returned an event stream for a non-streaming client; convert best-effort to JSON.
+    const parsedFromSSE = parseNonStreamingSSEPayload(
+      streamPayload,
+      targetFormat,
+      model,
+      opts.geminiReplayContext
+    );
+
+    if (!parsedFromSSE) {
+      return {
+        kind: "invalid_sse",
+        message: "Invalid SSE response for non-streaming request",
         looksLikeSSE: true,
         normalizedProviderPayload,
       };
@@ -125,6 +136,28 @@ export async function parseNonStreamingResponseBody(opts: {
         kind: "invalid_json",
         message: "Invalid JSON response from provider",
         detailedError: "Invalid JSON response from provider: expected an object payload",
+        looksLikeSSE: false,
+        normalizedProviderPayload,
+      };
+    }
+    if (opts.geminiReplayContext?.provider === "agy-enterprise" && targetFormat === "gemini") {
+      // Use the same terminal validation and native capture for JSON and buffered SSE.
+      const parsed = parseSSEToGeminiResponse(
+        `data: ${JSON.stringify(responseBody)}\n\n`,
+        model,
+        opts.geminiReplayContext
+      );
+      if (!parsed)
+        return {
+          kind: "invalid_json",
+          message: "Invalid JSON response from provider",
+          looksLikeSSE: false,
+          normalizedProviderPayload,
+        };
+      return {
+        kind: "ok",
+        responseBody: parsed,
+        responsePayloadFormat: "openai",
         looksLikeSSE: false,
         normalizedProviderPayload,
       };

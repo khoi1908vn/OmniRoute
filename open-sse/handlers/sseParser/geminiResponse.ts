@@ -3,6 +3,19 @@
 // state, following the handlers submodule pattern (chatCore/, responseSanitizer/).
 import { normalizeOpenAICompatibleFinishReasonString } from "../../utils/finishReason.ts";
 import { stripObfuscationZeroWidth } from "../../utils/zeroWidth.ts";
+import {
+  buildAgyEnterpriseReplayNamespace,
+  captureAgyEnterpriseReplayParts,
+  type AgyEnterpriseReplayState,
+} from "../../services/geminiThoughtSignatureStore.ts";
+
+export type GeminiReplayContext = {
+  provider?: string;
+  connectionId?: string | null;
+  experience?: string;
+  history?: unknown;
+  schemas?: Map<string, Record<string, unknown>>;
+};
 
 type AccumulatedToolCall = {
   id: string;
@@ -19,6 +32,9 @@ type GeminiSSEAccumulator = {
   sawTerminal: boolean;
   sawContent: boolean;
   toolCalls: AccumulatedToolCall[];
+  reasoningContent: string;
+  replay: AgyEnterpriseReplayState;
+  invalid: boolean;
 };
 
 function stripZeroWidth(value: unknown): unknown {
@@ -77,15 +93,22 @@ function applyCandidatePart(part: Record<string, unknown>, acc: GeminiSSEAccumul
       type: "function",
       function: {
         name: fc.name,
-        arguments: JSON.stringify(stripZeroWidth(fc.args ?? {})),
+        arguments: JSON.stringify(
+          acc.replay.provider === "agy-enterprise" ? (fc.args ?? {}) : stripZeroWidth(fc.args ?? {})
+        ),
       },
     });
     return;
   }
 
-  if (typeof part.text !== "string" || part.thought === true) return;
+  if (typeof part.text !== "string") return;
+  if (part.thought === true) {
+    acc.reasoningContent += part.text;
+    return;
+  }
 
-  const textualToolCall = tryParseTextualToolCall(part.text);
+  const textualToolCall =
+    acc.replay.provider === "agy-enterprise" ? null : tryParseTextualToolCall(part.text);
   if (textualToolCall) {
     acc.toolCalls.push({
       id: `${textualToolCall.name}-${Date.now()}-${acc.toolCalls.length}`,
@@ -110,6 +133,7 @@ function applyCandidateContentParts(
   const content = candidate?.content as Record<string, unknown> | undefined;
   const parts = content?.parts;
   if (!Array.isArray(parts)) return;
+  captureAgyEnterpriseReplayParts(acc.replay, parts, false);
   for (const part of parts) {
     applyCandidatePart(part as Record<string, unknown>, acc);
   }
@@ -131,7 +155,7 @@ function applyFinishReason(
 function applyUsageMetadata(parsed: Record<string, unknown>, acc: GeminiSSEAccumulator): void {
   const response = (parsed.response || parsed) as Record<string, unknown>;
   const um = response.usageMetadata as Record<string, unknown> | undefined;
-  if (!um) return;
+  if (!um || Object.keys(um).length === 0) return;
   const prompt = Number(um.promptTokenCount) || 0;
   const reasoning = Number(um.thoughtsTokenCount) || 0;
   const completion = (Number(um.candidatesTokenCount) || 0) + reasoning;
@@ -140,6 +164,9 @@ function applyUsageMetadata(parsed: Record<string, unknown>, acc: GeminiSSEAccum
     completion_tokens: completion,
     total_tokens: Number(um.totalTokenCount) || prompt + completion,
     ...(reasoning ? { completion_tokens_details: { reasoning_tokens: reasoning } } : {}),
+    ...(Number(um.cachedContentTokenCount)
+      ? { prompt_tokens_details: { cached_tokens: Number(um.cachedContentTokenCount) } }
+      : {}),
   };
 }
 
@@ -155,16 +182,22 @@ function applyGeminiSSEDataLine(payload: string, acc: GeminiSSEAccumulator): voi
     }
 
     const response = (parsed.response || parsed) as Record<string, unknown>;
+    if (response.error || parsed.error) acc.invalid = true;
     const candidates = response?.candidates;
     const candidate = Array.isArray(candidates)
       ? (candidates[0] as Record<string, unknown> | undefined)
       : undefined;
 
+    if (!candidate && (response.promptFeedback || parsed.promptFeedback)) {
+      acc.sawTerminal = true;
+      acc.finishReason = "content_filter";
+    }
+
     applyCandidateContentParts(candidate, acc);
     applyFinishReason(candidate, acc);
     applyUsageMetadata(parsed, acc);
   } catch {
-    // Ignore malformed lines
+    if (acc.replay.provider === "agy-enterprise") acc.invalid = true;
   }
 }
 
@@ -177,6 +210,7 @@ function buildChatCompletionFromAccumulator(
     role: "assistant",
     content: acc.textContent || null,
   };
+  if (acc.reasoningContent) message.reasoning_content = acc.reasoningContent;
 
   let finishReason = acc.finishReason;
   if (acc.toolCalls.length > 0) {
@@ -223,7 +257,8 @@ function buildChatCompletionFromAccumulator(
  */
 export function parseSSEToGeminiResponse(
   rawSSE: string,
-  fallbackModel: string
+  fallbackModel: string,
+  context: GeminiReplayContext = {}
 ): Record<string, unknown> | null {
   const lines = String(rawSSE || "").split("\n");
   const acc: GeminiSSEAccumulator = {
@@ -233,6 +268,20 @@ export function parseSSEToGeminiResponse(
     sawTerminal: false,
     sawContent: false,
     toolCalls: [],
+    reasoningContent: "",
+    replay: {
+      provider: context.provider,
+      enterpriseReplayHistory: context.history,
+      enterpriseReplaySchemas: context.schemas,
+      signatureNamespace:
+        context.provider === "agy-enterprise" && context.connectionId
+          ? buildAgyEnterpriseReplayNamespace(
+              context.connectionId,
+              context.experience || fallbackModel
+            )
+          : null,
+    },
+    invalid: false,
   };
 
   for (const line of lines) {
@@ -245,6 +294,10 @@ export function parseSSEToGeminiResponse(
   }
 
   if (!acc.sawContent && !acc.sawTerminal && !acc.usage && acc.toolCalls.length === 0) return null;
+  if (context.provider === "agy-enterprise") {
+    if (acc.invalid || !acc.sawTerminal) return null;
+    captureAgyEnterpriseReplayParts(acc.replay, [], true);
+  }
 
   return buildChatCompletionFromAccumulator(acc, fallbackModel);
 }

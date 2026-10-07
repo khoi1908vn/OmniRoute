@@ -15,6 +15,7 @@ import {
 } from "../../utils/finishReason.ts";
 import { stripAnsiCodes } from "../../utils/streamHelpers.ts";
 import { stripObfuscationZeroWidth } from "../../utils/zeroWidth.ts";
+import { captureAgyEnterpriseReplayParts } from "../../services/geminiThoughtSignatureStore.ts";
 
 type GeminiToOpenAIState = {
   functionIndex: number;
@@ -25,6 +26,8 @@ type GeminiToOpenAIState = {
   model: string;
   pendingThoughtSignature?: string | null;
   signatureNamespace?: string | null;
+  provider?: string;
+  enterpriseReplayHistory?: unknown;
   toolCalls: Map<number, unknown>;
   toolNameMap?: Map<string, string>;
   textualToolCallBuffer?: string;
@@ -259,7 +262,10 @@ function emitFunctionCallPart(
 ) {
   const rawToolName = part.functionCall.name;
   const fcName = caseInsensitiveToolNameLookup(rawToolName, state.toolNameMap) ?? rawToolName;
-  const fcArgs = normalizeToolCallArgs(part.functionCall.args || {});
+  const fcArgs =
+    state.provider === "agy-enterprise"
+      ? part.functionCall.args || {}
+      : normalizeToolCallArgs(part.functionCall.args || {});
   const toolCallIndex = state.functionIndex++;
   const toolCall = {
     id: buildToolCallId(part.functionCall, fcName, toolCallIndex),
@@ -271,7 +277,7 @@ function emitFunctionCallPart(
     },
   };
 
-  if (state.pendingThoughtSignature) {
+  if (state.pendingThoughtSignature && state.provider !== "agy-enterprise") {
     storeGeminiThoughtSignature(
       getSignatureCacheKey(state, toolCall.id),
       state.pendingThoughtSignature
@@ -305,7 +311,10 @@ export function geminiToOpenAIResponse(chunk, state) {
 
   const modelVersion =
     typeof response.modelVersion === "string" ? response.modelVersion.toLowerCase() : "";
-  const parseTextualReasoningTags = !chunk.response && !modelVersion.startsWith("antigravity/");
+  const parseTextualReasoningTags =
+    state.provider !== "agy-enterprise" &&
+    !chunk.response &&
+    !modelVersion.startsWith("antigravity/");
   const results = [];
   const candidate = response.candidates?.[0];
 
@@ -383,6 +392,7 @@ export function geminiToOpenAIResponse(chunk, state) {
   }
 
   const content = candidate.content;
+  captureAgyEnterpriseReplayParts(state, content?.parts || [], Boolean(candidate.finishReason));
 
   // Initialize state
   if (!state.messageId) {
@@ -410,11 +420,12 @@ export function geminiToOpenAIResponse(chunk, state) {
       // Normalize the part text once: strip ANSI/VT100 escape codes that some
       // upstreams (gemini-cli terminal redraws) inject, so the `<thinking>` /
       // `[Tool call:]` textual parsers below never see stray control bytes (#2273).
-      const partText = stripAnsiCodes(part.text);
+      const partText = state.provider === "agy-enterprise" ? part.text : stripAnsiCodes(part.text);
       const hasThoughtSig = part.thoughtSignature || part.thought_signature;
       const isThought = part.thought === true;
       if (hasThoughtSig && typeof hasThoughtSig === "string") {
-        state.pendingThoughtSignature = hasThoughtSig;
+        if (state.provider !== "agy-enterprise" || part.functionCall)
+          state.pendingThoughtSignature = hasThoughtSig;
       }
 
       // Handle thought signature (thinking mode) or native gemini thought flag
@@ -481,7 +492,8 @@ export function geminiToOpenAIResponse(chunk, state) {
 
         let accumulated = (state.textualToolCallBuffer || "") + afterReasoning;
 
-        let candidate = parseTextualToolCallCandidate(accumulated);
+        let candidate =
+          state.provider === "agy-enterprise" ? null : parseTextualToolCallCandidate(accumulated);
 
         if (candidate) {
           accumulated = stripObfuscationZeroWidth(accumulated);

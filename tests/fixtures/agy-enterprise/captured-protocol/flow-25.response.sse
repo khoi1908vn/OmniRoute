@@ -1,0 +1,8 @@
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_78"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_2"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_79"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_2"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_80"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_2"}
+
+data: {"candidates": [{"content": {"parts": [{"thoughtSignature": "SYNTHETIC_SIGNATURE_2","text": ""}],"role": "model"},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 11743,"candidatesTokenCount": 37,"totalTokenCount": 11818,"thoughtsTokenCount": 38,"promptTokensDetails": [{"modality": "TEXT","tokenCount": 11743}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 37}]},"modelVersion": "gemini-3.8-flash","responseId": "responseId_2"}
+

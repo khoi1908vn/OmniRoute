@@ -7,8 +7,10 @@ import { openaiToGeminiRequest } from "../../open-sse/translator/request/openai-
 import { parseSSEToGeminiResponse } from "../../open-sse/handlers/sseParser/geminiResponse.ts";
 import { shouldSkipCredentialRefresh } from "../../open-sse/handlers/chatCore/skipCredentialRefresh.ts";
 import { selectGoogleRefreshClient } from "../../open-sse/services/tokenRefresh/googleClientBinding.ts";
-import { getEnterpriseUsage } from "../../open-sse/services/usage/agyEnterprise.ts";
+import { getAgyEnterpriseUsage } from "../../open-sse/services/usage/agyEnterprise.ts";
+import { getUsageForProvider } from "../../open-sse/services/usage.ts";
 import { isEmptyContentResponse } from "../../open-sse/services/errorClassifier.ts";
+import { resetDbInstance } from "../../src/lib/db/core.ts";
 import {
   toProviderLimitsCacheEntry,
   mergeProviderLimitsCacheEntry,
@@ -21,6 +23,102 @@ const credentials = {
   _provider: "agy-enterprise",
 };
 const model = "gemini-3.5-flash-lite";
+
+test.after(() => resetDbInstance());
+
+test("Enterprise invalid text-only input is a request failure without health penalties", async (t) => {
+  const executor = new AgyEnterpriseExecutor();
+  let refreshes = 0;
+  let persistedRefreshes = 0;
+  let dispatches = 0;
+  t.mock.method(executor, "refreshCredentials", async () => {
+    refreshes++;
+    return { accessToken: "synthetic-refreshed" };
+  });
+  t.mock.method(globalThis, "fetch", async () => {
+    dispatches++;
+    return new Response(null, { status: 200 });
+  });
+  const result = await executor.execute({
+    model,
+    body: {
+      contents: [{ parts: [{ text: "Hello" }] }],
+      toolConfig: { functionCallingConfig: { mode: "ANY" } },
+    },
+    stream: false,
+    credentials: { ...credentials, expiresAt: new Date(0).toISOString() },
+    onCredentialsRefreshed: async () => {
+      persistedRefreshes++;
+    },
+  });
+  assert.equal(refreshes, 0);
+  assert.equal(persistedRefreshes, 0);
+  assert.equal(dispatches, 0);
+  assert.ok(result instanceof Response);
+  assert.equal(result.status, 400);
+  const error = await result.json();
+  assert.equal(error.error.type, "invalid_request_error");
+  assert.match(error.error.message, /tool/i);
+  assert.doesNotMatch(JSON.stringify(error), /\bat\s|\/private\/|[A-Z]:\\/);
+});
+
+test("Enterprise malformed requests and file images are local errors before dispatch", async (t) => {
+  const executor = new AgyEnterpriseExecutor();
+  let dispatches = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    dispatches++;
+    return new Response(null, { status: 200 });
+  });
+  for (const { body, diagnostic } of [
+    { body: null, diagnostic: /Enterprise request/ },
+    { body: { contents: [] }, diagnostic: /Enterprise request/ },
+    {
+      body: {
+        contents: [{ parts: [{ fileData: { mimeType: "image/png", fileUri: "synthetic" } }] }],
+      },
+      diagnostic: /media/,
+    },
+    {
+      body: {
+        contents: [{ parts: [{ text: "Hello" }] }],
+        systemInstruction: {
+          parts: [{ inlineData: { mimeType: "image/png", data: "synthetic" } }],
+        },
+      },
+      diagnostic: /Enterprise request/,
+    },
+    {
+      body: {
+        contents: [{ parts: [{ text: "Hello" }] }],
+        toolConfig: { functionCallingConfig: { mode: "AUTO" } },
+      },
+      diagnostic: /tool/,
+    },
+  ]) {
+    const result = await executor.execute({ model, body, stream: false, credentials });
+    assert.ok(result instanceof Response);
+    assert.equal(result.status, 400);
+    const error = await result.json();
+    assert.equal(error.error.type, "invalid_request_error");
+    assert.match(error.error.message, diagnostic);
+  }
+  assert.equal(dispatches, 0);
+});
+
+test("Enterprise credential context and dispatch failures remain outside request validation", async (t) => {
+  const executor = new AgyEnterpriseExecutor();
+  const body = { contents: [{ parts: [{ text: "Hello" }] }] };
+  await assert.rejects(
+    executor.execute({ model, body, stream: false, credentials: { accessToken: "synthetic" } })
+  );
+  t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("synthetic dispatch failure");
+  });
+  await assert.rejects(
+    executor.execute({ model, body, stream: false, credentials }),
+    /synthetic dispatch failure/
+  );
+});
 
 test("Enterprise terminal-only completion is valid and never becomes a synthetic failure", () => {
   assert.equal(
@@ -111,7 +209,7 @@ test("registry selects Enterprise executor and OpenAI text remains root Gemini w
         true,
         credentials
       ),
-    /tool calling/
+    /Too small/
   );
 });
 
@@ -162,6 +260,37 @@ test("direct and wrapped terminal-only SSE preserve finish and count reasoning o
   }
 });
 
+test("Gemini buffered prompt safety blocks preserve filtered termination", async (t) => {
+  const terminal = JSON.parse(
+    readFileSync(new URL("../fixtures/agy-enterprise/terminal.json", import.meta.url), "utf8")
+  );
+  for (const wrapped of [false, true]) {
+    for (const withUsage of [false, true]) {
+      await t.test(
+        `${wrapped ? "wrapped" : "direct"}, ${withUsage ? "with" : "without"} usage`,
+        () => {
+          const feedback = {
+            promptFeedback: { blockReason: "SAFETY" },
+            ...(withUsage ? { usageMetadata: terminal.usageMetadata } : {}),
+          };
+          const event = wrapped ? { response: feedback } : feedback;
+          const parsed = parseSSEToGeminiResponse(`data: ${JSON.stringify(event)}\n\n`, model);
+          assert.ok(parsed, "prompt safety blocks are valid terminal responses without usage");
+          const choices = parsed.choices as {
+            finish_reason: string;
+            message: { content: string | null };
+          }[];
+          assert.equal(choices[0].finish_reason, "content_filter");
+          assert.equal(choices[0].message.content, null);
+          if (withUsage)
+            assert.equal((parsed.usage as { total_tokens: number }).total_tokens, 12224);
+          else assert.equal(parsed.usage, undefined);
+        }
+      );
+    }
+  }
+});
+
 test("Enterprise permission failures do not refresh; issuer binding fails closed", async () => {
   assert.equal(
     await shouldSkipCredentialRefresh("agy-enterprise", new Response(null, { status: 403 })),
@@ -191,8 +320,14 @@ test("Enterprise permission failures do not refresh; issuer binding fails closed
 
 test("quota observations retain raw fractions, unknowns and provenance without authoritative quota", async (t) => {
   let payload: unknown;
-  t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
+  let summaryCalls = 0;
+  t.mock.method(globalThis, "fetch", async (url: unknown, init?: RequestInit) => {
+    assert.equal(
+      String(url),
+      "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+    );
     assert.equal(init?.body, "{}");
+    summaryCalls++;
     return Response.json(payload);
   });
   payload = {
@@ -205,7 +340,11 @@ test("quota observations retain raw fractions, unknowns and provenance without a
       },
     ],
   };
-  const usage = await getEnterpriseUsage("synthetic", context);
+  const usage = await getUsageForProvider(
+    { provider: "agy-enterprise", accessToken: "synthetic", providerSpecificData: context },
+    { forceRefresh: true }
+  );
+  assert.equal(summaryCalls, 1, "explicit dashboard refresh still fetches advisory observations");
   assert.equal(usage.quotas, null);
   assert.equal(usage.quotaObservations?.authority, "advisory");
   assert.equal(usage.quotaObservations?.buckets[0].remainingFraction, 1);
@@ -214,5 +353,5 @@ test("quota observations retain raw fractions, unknowns and provenance without a
   const error = toProviderLimitsCacheEntry({ quotas: null, message: "failed" }, "manual");
   assert.equal(mergeProviderLimitsCacheEntry("agy-enterprise", error, cache), cache);
   payload = { groups: [{ buckets: [{ bucketId: "bad", remainingFraction: 2 }] }] };
-  assert.equal((await getEnterpriseUsage("synthetic", context)).quotaObservations, undefined);
+  assert.equal((await getAgyEnterpriseUsage("synthetic", context)).quotaObservations, undefined);
 });

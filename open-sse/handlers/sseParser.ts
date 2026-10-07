@@ -3,7 +3,7 @@ import { sanitizeErrorMessage } from "../utils/error.ts";
 
 /**
  * Extract a provider error message from a buffered SSE stream that carries an
- * error-only chunk (`data: {"error":...}`) and no content chunks.
+ * error-only chunk (`data: {"error":...}`), including after partial content.
  *
  * Some executors always return `text/event-stream` even on failure (e.g. the
  * Devin/Windsurf CLI executors emit `data: {"error":{"message":"Devin CLI not
@@ -13,9 +13,10 @@ import { sanitizeErrorMessage } from "../utils/error.ts";
  * "Invalid SSE response" 502, swallowing the actionable message (#3324).
  *
  * Provider-agnostic: matches any `data:` chunk that has an `error` field but no
- * `choices` array. The returned message is always run through sanitizeErrorMessage
+ * `choices` array, either directly or inside a `response` envelope.
+ * The returned message is always run through sanitizeErrorMessage
  * so stack traces / absolute source paths never leak (Hard Rule #12). Returns
- * `null` when no error-only chunk is present (so valid-content streams are left
+ * `null` when no error-only chunk is present (so successful streams are left
  * to the normal parsers).
  */
 export function extractSSEErrorMessage(rawSSE: unknown): string | null {
@@ -36,12 +37,17 @@ export function extractSSEErrorMessage(rawSSE: unknown): string | null {
 
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
     const record = parsed as Record<string, unknown>;
+    const response = record.response;
+    const responseRecord =
+      response && typeof response === "object" && !Array.isArray(response)
+        ? (response as Record<string, unknown>)
+        : record;
 
     // A chunk with content (choices) is not an error-only chunk — defer to the
     // normal content parsers so the valid-SSE path is never short-circuited.
-    if (Array.isArray(record.choices)) continue;
+    if (Array.isArray(record.choices) || Array.isArray(responseRecord.choices)) continue;
 
-    const err = record.error;
+    const err = responseRecord.error ?? record.error;
     if (err == null) continue;
 
     let message = "";

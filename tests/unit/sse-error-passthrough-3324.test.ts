@@ -67,6 +67,46 @@ test("extractSSEErrorMessage returns null for a stream with no error and no choi
   assert.equal(extractSSEErrorMessage(rawSSE), null);
 });
 
+test("extractSSEErrorMessage prioritizes sanitized wrapped errors over prompt feedback", () => {
+  const rawSSE = `data: ${JSON.stringify({
+    response: {
+      promptFeedback: { blockReason: "SAFETY" },
+      error: { code: 503, message: "Service unavailable\n    at /private/server.ts:1:1" },
+    },
+  })}\n\n`;
+  assert.equal(extractSSEErrorMessage(rawSSE), "Service unavailable");
+});
+
+test("extractSSEErrorMessage scans beyond blocked feedback to a wrapped error", () => {
+  const rawSSE = [
+    'data: {"promptFeedback":{"blockReason":"SAFETY"}}',
+    'data: {"response":{"error":{"code":503,"message":"Service unavailable"}}}',
+  ].join("\n\n");
+  assert.equal(extractSSEErrorMessage(rawSSE), "Service unavailable");
+});
+
+test("extractSSEErrorMessage retains root and wrapped choices success guards", () => {
+  const choices = [{ delta: { content: "Hi" }, finish_reason: "stop" }];
+  for (const event of [
+    { choices, error: { message: "Incidental error field" } },
+    { response: { choices, error: { message: "Incidental error field" } } },
+    { choices, response: { error: { message: "Incidental error field" } } },
+  ]) {
+    assert.equal(extractSSEErrorMessage(`data: ${JSON.stringify(event)}\n\n`), null);
+  }
+});
+
+test("extractSSEErrorMessage does not reject successful wrapped Gemini and prompt blocks", () => {
+  for (const event of [
+    { response: { candidates: [{ content: { parts: [{ text: "Hi" }] }, finishReason: "STOP" }] } },
+    { response: { promptFeedback: { blockReason: "SAFETY" } } },
+    { response: { error: null } },
+    { response: { error: { message: "" } } },
+  ]) {
+    assert.equal(extractSSEErrorMessage(`data: ${JSON.stringify(event)}\n\n`), null);
+  }
+});
+
 test("extractSSEErrorMessage sanitizes stack-trace-like error messages (no `at /` leak)", () => {
   // Genuine V8 stack shape: real newline between the message and the frames, so
   // a JSON.stringify of a real Error.stack-style string round-trips with the

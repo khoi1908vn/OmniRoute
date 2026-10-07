@@ -7,6 +7,7 @@ import {
   storeGeminiThoughtSignature,
 } from "../../services/geminiThoughtSignatureStore.ts";
 import { splitMarkdownBoundary } from "../helpers/markdownBoundary.ts";
+import { captureAgyEnterpriseReplayParts } from "../../services/geminiThoughtSignatureStore.ts";
 
 function normalizeToolName(name: string, toolNameMap?: Map<string, string> | null): string {
   return restoreClaudeToolName(name, toolNameMap);
@@ -15,7 +16,10 @@ function normalizeToolName(name: string, toolNameMap?: Map<string, string> | nul
 function extractXmlInvokeBlocks(
   text: string,
   state: { _xmlInvokeBuffer?: string }
-): { cleaned: string; toolCalls: Array<{ id: string; name: string; args: Record<string, unknown> }> } {
+): {
+  cleaned: string;
+  toolCalls: Array<{ id: string; name: string; args: Record<string, unknown> }>;
+} {
   const toolCalls: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
   const combined = (state._xmlInvokeBuffer || "") + text;
   state._xmlInvokeBuffer = "";
@@ -28,10 +32,22 @@ function extractXmlInvokeBlocks(
     const toolCallTextMatch = remaining.match(/TOOL_CALL\s+([A-Za-z0-9_]+):\s*/);
 
     const matches = [
-      invokeMatch ? { type: "invoke" as const, index: invokeMatch.index!, data: invokeMatch } : null,
-      toolCallTagMatch ? { type: "tool_call_tag" as const, index: toolCallTagMatch.index!, data: toolCallTagMatch } : null,
-      toolCallTextMatch ? { type: "tool_call_text" as const, index: toolCallTextMatch.index!, data: toolCallTextMatch } : null,
-    ].filter(Boolean).sort((a, b) => a!.index - b!.index);
+      invokeMatch
+        ? { type: "invoke" as const, index: invokeMatch.index!, data: invokeMatch }
+        : null,
+      toolCallTagMatch
+        ? { type: "tool_call_tag" as const, index: toolCallTagMatch.index!, data: toolCallTagMatch }
+        : null,
+      toolCallTextMatch
+        ? {
+            type: "tool_call_text" as const,
+            index: toolCallTextMatch.index!,
+            data: toolCallTextMatch,
+          }
+        : null,
+    ]
+      .filter(Boolean)
+      .sort((a, b) => a!.index - b!.index);
 
     if (matches.length === 0) {
       cleaned += remaining;
@@ -45,50 +61,90 @@ function extractXmlInvokeBlocks(
     if (first.type === "invoke") {
       const startMatch = first.data;
       const endMatch = rest.match(/<\/invoke>/);
-      if (!endMatch) { state._xmlInvokeBuffer = rest; break; }
+      if (!endMatch) {
+        state._xmlInvokeBuffer = rest;
+        break;
+      }
       const innerXml = rest.slice(startMatch[0].length, endMatch.index!);
       const fullLength = endMatch.index! + endMatch[0].length;
       const args: Record<string, string> = {};
       const paramRegex = /<parameter\s+name="([^"]*)"[^>]*>([\s\S]*?)<\/parameter>/g;
       let pm;
-      while ((pm = paramRegex.exec(innerXml)) !== null) { args[pm[1]] = pm[2].trim(); }
-      toolCalls.push({ id: `toolu_xml_${Date.now()}_${toolCalls.length}`, name: startMatch[1], args });
+      while ((pm = paramRegex.exec(innerXml)) !== null) {
+        args[pm[1]] = pm[2].trim();
+      }
+      toolCalls.push({
+        id: `toolu_xml_${Date.now()}_${toolCalls.length}`,
+        name: startMatch[1],
+        args,
+      });
       remaining = rest.slice(fullLength);
     } else if (first.type === "tool_call_tag") {
       const endMatch = rest.match(/<\/tool_call>/);
-      if (!endMatch) { state._xmlInvokeBuffer = rest; break; }
+      if (!endMatch) {
+        state._xmlInvokeBuffer = rest;
+        break;
+      }
       const innerJson = rest.slice("<tool_call>".length, endMatch.index!).trim();
       const fullLength = endMatch.index! + "</tool_call>".length;
       try {
         const parsed = JSON.parse(innerJson) as Record<string, unknown>;
         const name = (parsed.name || parsed.tool_name || "") as string;
         const rawArgs = parsed.arguments || parsed.args || parsed.parameters || {};
-        const args: Record<string, unknown> = typeof rawArgs === "string" ? JSON.parse(rawArgs) : (rawArgs as Record<string, unknown>);
-        if (name) { toolCalls.push({ id: `toolu_txt_${Date.now()}_${toolCalls.length}`, name, args }); }
-      } catch { cleaned += rest.slice(0, fullLength); }
+        const args: Record<string, unknown> =
+          typeof rawArgs === "string" ? JSON.parse(rawArgs) : (rawArgs as Record<string, unknown>);
+        if (name) {
+          toolCalls.push({ id: `toolu_txt_${Date.now()}_${toolCalls.length}`, name, args });
+        }
+      } catch {
+        cleaned += rest.slice(0, fullLength);
+      }
       remaining = rest.slice(fullLength);
     } else {
       const startMatch = first.data;
       const toolName = startMatch[1];
       const afterPrefix = rest.slice(startMatch[0].length);
-      let depth = 0, inString = false, escape = false, jsonEndIndex = -1;
+      let depth = 0,
+        inString = false,
+        escape = false,
+        jsonEndIndex = -1;
       for (let i = 0; i < afterPrefix.length; i++) {
         const c = afterPrefix[i];
-        if (escape) { escape = false; continue; }
-        if (c === "\\" && inString) { escape = true; continue; }
-        if (c === '"') { inString = !inString; continue; }
+        if (escape) {
+          escape = false;
+          continue;
+        }
+        if (c === "\\" && inString) {
+          escape = true;
+          continue;
+        }
+        if (c === '"') {
+          inString = !inString;
+          continue;
+        }
         if (!inString) {
           if (c === "{") depth++;
-          else if (c === "}") { depth--; if (depth === 0) { jsonEndIndex = i + 1; break; } }
+          else if (c === "}") {
+            depth--;
+            if (depth === 0) {
+              jsonEndIndex = i + 1;
+              break;
+            }
+          }
         }
       }
-      if (jsonEndIndex === -1) { state._xmlInvokeBuffer = rest; break; }
+      if (jsonEndIndex === -1) {
+        state._xmlInvokeBuffer = rest;
+        break;
+      }
       const jsonStr = afterPrefix.slice(0, jsonEndIndex);
       const fullLength = startMatch[0].length + jsonEndIndex;
       try {
         const args = JSON.parse(jsonStr) as Record<string, unknown>;
         toolCalls.push({ id: `toolu_txt_${Date.now()}_${toolCalls.length}`, name: toolName, args });
-      } catch { cleaned += rest.slice(0, fullLength); }
+      } catch {
+        cleaned += rest.slice(0, fullLength);
+      }
       remaining = rest.slice(fullLength);
     }
   }
@@ -142,6 +198,7 @@ export function geminiToClaudeResponse(chunk, state) {
   const results = [];
   const candidate = response.candidates[0];
   const content = candidate.content;
+  captureAgyEnterpriseReplayParts(state, content?.parts || [], Boolean(candidate.finishReason));
 
   // ── Initialize: emit message_start ─────────────────────────────
   if (!state.messageId) {
@@ -182,7 +239,8 @@ export function geminiToClaudeResponse(chunk, state) {
       // Capture thoughtSignature so the next functionCall (or same-part call)
       // can persist it for Claude→Gemini follow-up turns (#8979 / #2504 parity).
       if (typeof hasThoughtSig === "string" && hasThoughtSig.length > 0) {
-        state.pendingThoughtSignature = hasThoughtSig;
+        if (state.provider !== "agy-enterprise" || part.functionCall)
+          state.pendingThoughtSignature = hasThoughtSig;
       }
 
       // Thinking content → thinking block (always open+close per chunk)
@@ -242,7 +300,7 @@ export function geminiToClaudeResponse(chunk, state) {
           state.pendingThoughtSignature.length > 0
             ? state.pendingThoughtSignature
             : null);
-        if (signatureForToolCall) {
+        if (signatureForToolCall && state.provider !== "agy-enterprise") {
           storeGeminiThoughtSignature(
             buildGeminiThoughtSignatureKey(state.signatureNamespace, toolId),
             signatureForToolCall
@@ -283,7 +341,10 @@ export function geminiToClaudeResponse(chunk, state) {
         !part.functionCall;
 
       if (isRegularText || isTextAfterThinking) {
-        const { cleaned, toolCalls: textToolCalls } = extractXmlInvokeBlocks(part.text, state);
+        const { cleaned, toolCalls: textToolCalls } =
+          state.provider === "agy-enterprise"
+            ? { cleaned: part.text, toolCalls: [] }
+            : extractXmlInvokeBlocks(part.text, state);
 
         // Process any extracted text-format tool calls (<tool_call>, TOOL_CALL, <invoke>)
         if (textToolCalls.length > 0) {
@@ -299,7 +360,9 @@ export function geminiToClaudeResponse(chunk, state) {
               state.toolNameMap instanceof Map ? state.toolNameMap : null
             );
             const signatureForToolCall =
-              (typeof hasThoughtSig === "string" && hasThoughtSig.length > 0 ? hasThoughtSig : null) ||
+              (typeof hasThoughtSig === "string" && hasThoughtSig.length > 0
+                ? hasThoughtSig
+                : null) ||
               (typeof state.pendingThoughtSignature === "string" &&
               state.pendingThoughtSignature.length > 0
                 ? state.pendingThoughtSignature
@@ -348,7 +411,7 @@ export function geminiToClaudeResponse(chunk, state) {
             state._markdownFenceRun || 0,
             state._markdownFenceOpening === true,
             state._markdownFenceClosingRun || 0,
-            state._markdownLineIndent || 0,
+            state._markdownLineIndent || 0
           );
           state._markdownBuffer = textToHold;
           state._markdownCodeSpanRun = backtickRun || 0;

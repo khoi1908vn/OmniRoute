@@ -1,0 +1,93 @@
+{
+  "request": {
+    "url": "https://businessaicode.us.rep.googleapis.com/v1beta/projects/SANITIZED_PROJECT/locations/us:streamGenerateContent?alt=sse",
+    "method": "POST",
+    "httpVersion": "HTTP/1.1",
+    "headers": [
+      {
+        "name": "Host",
+        "value": "businessaicode.us.rep.googleapis.com"
+      },
+      {
+        "name": "User-Agent",
+        "value": "antigravity/cli/1.2.16 (aidev_client; os_type=windows; arch=amd64; cl=992658124; auth_method=gcp)"
+      },
+      {
+        "name": "Transfer-Encoding",
+        "value": "chunked"
+      },
+      {
+        "name": "Authorization",
+        "value": "Bearer SANITIZED_TOKEN"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json"
+      },
+      {
+        "name": "X-Aicode-Request-Id",
+        "value": "SANITIZED_HEADER"
+      },
+      {
+        "name": "X-Aicode-Trajectory-Id",
+        "value": "SANITIZED_HEADER"
+      },
+      {
+        "name": "Accept-Encoding",
+        "value": "gzip"
+      }
+    ],
+    "contentType": "application/json"
+  },
+  "response": {
+    "status": 200,
+    "httpVersion": "HTTP/1.1",
+    "headers": [
+      {
+        "name": "content-type",
+        "value": "text/event-stream"
+      },
+      {
+        "name": "content-disposition",
+        "value": "SANITIZED_HEADER"
+      },
+      {
+        "name": "vary",
+        "value": "SANITIZED_HEADER"
+      },
+      {
+        "name": "date",
+        "value": "SANITIZED_HEADER"
+      },
+      {
+        "name": "server",
+        "value": "SANITIZED_HEADER"
+      },
+      {
+        "name": "x-xss-protection",
+        "value": "SANITIZED_HEADER"
+      },
+      {
+        "name": "x-frame-options",
+        "value": "SANITIZED_HEADER"
+      },
+      {
+        "name": "x-content-type-options",
+        "value": "SANITIZED_HEADER"
+      },
+      {
+        "name": "server-timing",
+        "value": "SANITIZED_HEADER"
+      },
+      {
+        "name": "via",
+        "value": "SANITIZED_HEADER"
+      },
+      {
+        "name": "transfer-encoding",
+        "value": "chunked"
+      }
+    ],
+    "contentType": "text/event-stream"
+  }
+}
