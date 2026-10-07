@@ -92,6 +92,7 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
     tools?: Array<{
       functionDeclarations?: Array<Record<string, unknown>>;
       googleSearch?: Record<string, unknown>;
+      enterpriseWebSearch?: Record<string, unknown>;
       googleSearchRetrieval?: Record<string, unknown>;
     }>;
     _toolNameMap?: Map<string, string>;
@@ -383,11 +384,18 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
             const textIndices = parts.flatMap((part, index) =>
               typeof part.text === "string" && !part.thought ? [index] : []
             );
-            // Joining across tools/thoughts would move bytes across a boundary.
-            if (textIndices.some((index, offset) => index !== textIndices[0] + offset))
+            // A grounded footer may follow a tool, but native text must never
+            // be joined across thinking boundaries.
+            if (parts.slice(textIndices[0], textIndices.at(-1) + 1).some((part) => part.thought))
               missingAgyEnterpriseReplay();
-            parts.splice(textIndices[0], textIndices.length, {
-              text,
+            if (
+              replay.nativeText === undefined &&
+              textIndices.some((index, offset) => index !== textIndices[0] + offset)
+            )
+              missingAgyEnterpriseReplay();
+            for (const index of [...textIndices].reverse()) parts.splice(index, 1);
+            parts.splice(textIndices[0], 0, {
+              text: replay.nativeText ?? text,
               ...(replay.thoughtSignature ? { thoughtSignature: replay.thoughtSignature } : {}),
             });
           }
@@ -402,6 +410,7 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
   // ── Convert tools ──────────────────────────────────────────────
   const geminiTools = buildGeminiTools(body.tools, {
     toolNameMap,
+    agyEnterprise,
   });
   if (geminiTools) {
     result.tools = geminiTools;

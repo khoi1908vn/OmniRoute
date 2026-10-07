@@ -7,7 +7,11 @@ import {
   storeGeminiThoughtSignature,
 } from "../../services/geminiThoughtSignatureStore.ts";
 import { splitMarkdownBoundary } from "../helpers/markdownBoundary.ts";
-import { captureAgyEnterpriseReplayParts } from "../../services/geminiThoughtSignatureStore.ts";
+import {
+  captureAgyEnterpriseReplayParts,
+  captureAgyEnterpriseGroundedReplay,
+} from "../../services/geminiThoughtSignatureStore.ts";
+import { enterpriseGroundingText } from "../helpers/agyEnterpriseGrounding.ts";
 
 function normalizeToolName(name: string, toolNameMap?: Map<string, string> | null): string {
   return restoreClaudeToolName(name, toolNameMap);
@@ -444,6 +448,31 @@ export function geminiToClaudeResponse(chunk, state) {
           }
         }
       }
+    }
+  }
+
+  if (state.provider === "agy-enterprise") {
+    const searchText = enterpriseGroundingText(
+      candidate.groundingMetadata || candidate.grounding_metadata,
+      state
+    );
+    captureAgyEnterpriseGroundedReplay(state, searchText, Boolean(candidate.finishReason));
+    if (searchText) {
+      flushMarkdownBuffer(state, results);
+      if (state.openTextBlockIdx === null) {
+        const index = state.contentBlockIndex++;
+        state.openTextBlockIdx = index;
+        results.push({
+          type: "content_block_start",
+          index,
+          content_block: { type: "text", text: "" },
+        });
+      }
+      results.push({
+        type: "content_block_delta",
+        index: state.openTextBlockIdx,
+        delta: { type: "text_delta", text: searchText },
+      });
     }
   }
 

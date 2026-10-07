@@ -15,7 +15,11 @@ import {
 } from "../../utils/finishReason.ts";
 import { stripAnsiCodes } from "../../utils/streamHelpers.ts";
 import { stripObfuscationZeroWidth } from "../../utils/zeroWidth.ts";
-import { captureAgyEnterpriseReplayParts } from "../../services/geminiThoughtSignatureStore.ts";
+import {
+  captureAgyEnterpriseReplayParts,
+  captureAgyEnterpriseGroundedReplay,
+} from "../../services/geminiThoughtSignatureStore.ts";
+import { enterpriseGroundingText } from "../helpers/agyEnterpriseGrounding.ts";
 
 type GeminiToOpenAIState = {
   functionIndex: number;
@@ -27,6 +31,10 @@ type GeminiToOpenAIState = {
   pendingThoughtSignature?: string | null;
   signatureNamespace?: string | null;
   provider?: string;
+  enterpriseSearchQueries?: Set<string>;
+  enterpriseSearchSources?: Set<string>;
+  enterpriseRenderedText?: string;
+  enterpriseHasGroundingText?: boolean;
   enterpriseReplayHistory?: unknown;
   toolCalls: Map<number, unknown>;
   toolNameMap?: Map<string, string>;
@@ -625,7 +633,20 @@ export function geminiToOpenAIResponse(chunk, state) {
 
   // Grounding Metadata (Google Search)
   const grounding = candidate.groundingMetadata || candidate.grounding_metadata;
-  if (grounding && !state.groundingProcessed) {
+  if (state.provider === "agy-enterprise") {
+    const searchText = enterpriseGroundingText(grounding, state);
+    captureAgyEnterpriseGroundedReplay(state, searchText, Boolean(candidate.finishReason));
+    if (searchText) {
+      results.push({
+        id: `chatcmpl-${state.messageId}`,
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model: state.model,
+        choices: [{ index: 0, delta: { content: searchText }, finish_reason: null }],
+      });
+    }
+  }
+  if (grounding && state.provider !== "agy-enterprise" && !state.groundingProcessed) {
     const citations = [];
     if (grounding.groundingChunks || grounding.grounding_chunks) {
       const chunks = grounding.groundingChunks || grounding.grounding_chunks;

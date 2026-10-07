@@ -434,7 +434,7 @@ export function getAgyEnterpriseTextReplay(
   text: string,
   calls: EnterpriseCall[],
   history: unknown = []
-): { thoughtSignature?: string } | null {
+): { thoughtSignature?: string; nativeText?: string } | null {
   if (!namespace?.startsWith("agy-enterprise:") || !text) return null;
   const key = enterpriseReplayKey(namespace, "text", text, history);
   let value = readEnterpriseSignature(key);
@@ -461,6 +461,33 @@ export function getAgyEnterpriseTextReplay(
   if (!value) return null;
   if (!value.startsWith("{")) return { thoughtSignature: value };
   try {
+    const grounded = z
+      .object({
+        kind: z.literal("native-grounded-text"),
+        nativeText: z.string(),
+        thoughtSignature: z.string().min(1).optional(),
+        callsDigest: z.string(),
+      })
+      .strict()
+      .safeParse(JSON.parse(value));
+    if (grounded.success) {
+      const originals = calls.map(
+        (call) =>
+          getAgyEnterpriseCallReplay(namespace, call, calls, history)?.nativePart.functionCall ??
+          call
+      );
+      if (
+        grounded.data.callsDigest !== enterpriseCallsDigest(originals) ||
+        !calls.every((call) => getAgyEnterpriseCallReplay(namespace, call, calls, history))
+      )
+        return null;
+      return {
+        nativeText: grounded.data.nativeText,
+        ...(grounded.data.thoughtSignature
+          ? { thoughtSignature: grounded.data.thoughtSignature }
+          : {}),
+      };
+    }
     const record = JSON.parse(value) as { kind: string; callsDigest: string };
     return record.kind === "native-unsigned-precall-text" &&
       calls.length &&
@@ -653,10 +680,14 @@ export type AgyEnterpriseReplayState = {
   enterpriseReplayHistory?: unknown;
   enterpriseReplaySchemas?: Map<string, Record<string, unknown>>;
   enterpriseVisibleText?: string;
+  enterpriseRenderedText?: string;
+  enterpriseHasGroundingText?: boolean;
   enterpriseTextSignature?: string | null;
   enterpriseSignedText?: string;
   enterpriseHasCall?: boolean;
   enterpriseTextAfterCall?: boolean;
+  enterpriseThoughtAfterText?: boolean;
+  enterpriseTextAfterThought?: boolean;
   enterpriseCalls?: Array<{
     call: EnterpriseCall;
     signature?: string;
@@ -673,6 +704,8 @@ export function captureAgyEnterpriseReplayParts(
 ): void {
   if (state.provider !== "agy-enterprise" || !state.signatureNamespace) return;
   for (const part of parts) {
+    if (part.thought === true && state.enterpriseVisibleText)
+      state.enterpriseThoughtAfterText = true;
     if (part.functionCall) {
       state.enterpriseHasCall = true;
       state.enterpriseCalls ??= [];
@@ -689,8 +722,10 @@ export function captureAgyEnterpriseReplayParts(
       });
     }
     if (part.thought !== true && typeof part.text === "string" && !part.functionCall) {
+      if (part.text && state.enterpriseThoughtAfterText) state.enterpriseTextAfterThought = true;
       if (part.text && state.enterpriseHasCall) state.enterpriseTextAfterCall = true;
       state.enterpriseVisibleText = (state.enterpriseVisibleText || "") + part.text;
+      state.enterpriseRenderedText = (state.enterpriseRenderedText || "") + part.text;
       if (typeof part.thoughtSignature === "string" && (part.text || !state.enterpriseHasCall)) {
         state.enterpriseTextSignature = part.thoughtSignature;
         state.enterpriseSignedText = state.enterpriseVisibleText;
@@ -749,6 +784,45 @@ export function captureAgyEnterpriseReplayParts(
       )
     );
   }
+}
+
+/** Bind the exact emitted search footer to its original native text and call group.
+ * Signatures are replayed with original upstream bytes, never with added Markdown.
+ */
+export function captureAgyEnterpriseGroundedReplay(
+  state: AgyEnterpriseReplayState,
+  searchText: string,
+  terminal: boolean
+): void {
+  if (state.provider !== "agy-enterprise" || !state.signatureNamespace) return;
+  state.enterpriseRenderedText = (state.enterpriseRenderedText || "") + searchText;
+  state.enterpriseHasGroundingText ||= Boolean(searchText);
+  if (
+    !terminal ||
+    !state.enterpriseHasGroundingText ||
+    !state.enterpriseRenderedText ||
+    state.enterpriseTextAfterCall ||
+    state.enterpriseTextAfterThought
+  )
+    return;
+  if (state.enterpriseTextSignature && state.enterpriseSignedText !== state.enterpriseVisibleText)
+    return;
+  const calls = state.enterpriseCalls || [];
+  if (calls.length && !calls.some((entry) => entry.signature)) return;
+  storeEnterpriseSignature(
+    enterpriseReplayKey(
+      state.signatureNamespace,
+      "text",
+      state.enterpriseRenderedText,
+      state.enterpriseReplayHistory
+    ),
+    JSON.stringify({
+      kind: "native-grounded-text",
+      nativeText: state.enterpriseVisibleText || "",
+      ...(state.enterpriseTextSignature ? { thoughtSignature: state.enterpriseTextSignature } : {}),
+      callsDigest: enterpriseCallsDigest(calls.map((entry) => entry.call)),
+    })
+  );
 }
 let signatureCacheMode: SignatureCacheMode = "enabled";
 let persistedPruneCounter = 0;

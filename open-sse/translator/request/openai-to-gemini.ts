@@ -97,6 +97,7 @@ type GeminiRequest = {
   tools?: Array<{
     functionDeclarations?: GeminiFunctionDeclaration[];
     googleSearch?: Record<string, unknown>;
+    enterpriseWebSearch?: Record<string, unknown>;
   }>;
   toolConfig?: { functionCallingConfig: GeminiFunctionCallingConfig };
   cachedContent?: string;
@@ -490,7 +491,7 @@ function openaiToGeminiBase(
                 )
               );
             parts.push({
-              text,
+              text: replay?.nativeText ?? text,
               ...(replay?.thoughtSignature ? { thoughtSignature: replay.thoughtSignature } : {}),
             });
           }
@@ -762,10 +763,12 @@ function openaiToGeminiBase(
   });
 
   // Support for Google Search grounding if requested via 'google_search' tool
-  const hasGoogleSearch = bodyTools?.some((t) => {
-    const fn = t.function as { name?: string } | undefined;
-    return t.type === "function" && (fn?.name === "google_search" || fn?.name === "googleSearch");
-  });
+  const hasGoogleSearch =
+    !toolNameOptions.agyEnterprise &&
+    bodyTools?.some((t) => {
+      const fn = t.function as { name?: string } | undefined;
+      return t.type === "function" && (fn?.name === "google_search" || fn?.name === "googleSearch");
+    });
 
   type ToolEntry = NonNullable<GeminiRequest["tools"]>[number];
 

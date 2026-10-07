@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { agyEnterpriseContextSchema } from "@omniroute/open-sse/utils/agyEnterprise.ts";
+import {
+  agyEnterpriseContextSchema,
+  agyEnterpriseWebSearchSchema,
+} from "@omniroute/open-sse/utils/agyEnterprise.ts";
 import {
   BaseExecutor,
   type ExecuteInput,
@@ -113,21 +116,24 @@ const requestSchema = z
       generationConfig: z.record(z.string(), z.unknown()).optional(),
       tools: z
         .array(
-          z
-            .object({
-              functionDeclarations: z
-                .array(
-                  z
-                    .object({
-                      name: z.string().min(1),
-                      description: z.string().optional(),
-                      parameters: z.record(z.string(), z.unknown()).optional(),
-                    })
-                    .strict()
-                )
-                .min(1),
-            })
-            .strict()
+          z.union([
+            z
+              .object({
+                functionDeclarations: z
+                  .array(
+                    z
+                      .object({
+                        name: z.string().min(1),
+                        description: z.string().optional(),
+                        parameters: z.record(z.string(), z.unknown()).optional(),
+                      })
+                      .strict()
+                  )
+                  .min(1),
+              })
+              .strict(),
+            z.object({ enterpriseWebSearch: agyEnterpriseWebSearchSchema }).strict(),
+          ])
         )
         .optional(),
     })

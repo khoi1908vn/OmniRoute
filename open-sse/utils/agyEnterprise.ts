@@ -1,5 +1,21 @@
 import { z } from "zod";
 
+// Only hostname exclusions have a native equivalent. Paths, allowlists and
+// per-request search counts cannot be enforced by an Enterprise declaration.
+export const agyEnterpriseWebSearchSchema = z
+  .object({
+    excludeDomains: z
+      .array(
+        z
+          .string()
+          .max(253)
+          .regex(/^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$/)
+      )
+      .max(2000)
+      .optional(),
+  })
+  .strict();
+
 export const agyEnterpriseProjectSchema = z.string().regex(/^[a-z][a-z0-9-]{4,61}[a-z0-9]$/);
 export const agyEnterpriseLicenseSchema = z.object({
   projectId: agyEnterpriseProjectSchema,

@@ -3,9 +3,11 @@
 // state, following the handlers submodule pattern (chatCore/, responseSanitizer/).
 import { normalizeOpenAICompatibleFinishReasonString } from "../../utils/finishReason.ts";
 import { stripObfuscationZeroWidth } from "../../utils/zeroWidth.ts";
+import { enterpriseGroundingText } from "../../translator/helpers/agyEnterpriseGrounding.ts";
 import {
   buildAgyEnterpriseReplayNamespace,
   captureAgyEnterpriseReplayParts,
+  captureAgyEnterpriseGroundedReplay,
   type AgyEnterpriseReplayState,
 } from "../../services/geminiThoughtSignatureStore.ts";
 
@@ -35,6 +37,8 @@ type GeminiSSEAccumulator = {
   reasoningContent: string;
   replay: AgyEnterpriseReplayState;
   invalid: boolean;
+  enterpriseSearchQueries?: Set<string>;
+  enterpriseSearchSources?: Set<string>;
 };
 
 function stripZeroWidth(value: unknown): unknown {
@@ -194,6 +198,14 @@ function applyGeminiSSEDataLine(payload: string, acc: GeminiSSEAccumulator): voi
     }
 
     applyCandidateContentParts(candidate, acc);
+    if (acc.replay.provider === "agy-enterprise") {
+      const searchText = enterpriseGroundingText(
+        candidate?.groundingMetadata || candidate?.grounding_metadata,
+        acc
+      );
+      acc.textContent += searchText;
+      captureAgyEnterpriseGroundedReplay(acc.replay, searchText, false);
+    }
     applyFinishReason(candidate, acc);
     applyUsageMetadata(parsed, acc);
   } catch {
@@ -297,6 +309,7 @@ export function parseSSEToGeminiResponse(
   if (context.provider === "agy-enterprise") {
     if (acc.invalid || !acc.sawTerminal) return null;
     captureAgyEnterpriseReplayParts(acc.replay, [], true);
+    captureAgyEnterpriseGroundedReplay(acc.replay, "", true);
   }
 
   return buildChatCompletionFromAccumulator(acc, fallbackModel);
