@@ -33,6 +33,7 @@ import { shouldClearErrorStateOnValidProbe } from "@/lib/usage/providerLimits";
 import { isConnectionUnavailableToAuxiliaryActivity } from "@/lib/exclusiveLeaseIsolation";
 import { buildApiKeyConnectionTestResult } from "./apiKeyTestResult";
 import { classifyOAuthProbeInconclusive, OAUTH_TEST_CONFIG } from "./oauthTestConfig";
+import { acceptedOAuthProbeResult } from "./oauthProbeResult";
 import { isGeoBlockedError } from "@omniroute/open-sse/services/errorClassifier.ts";
 import * as retirement from "@/lib/providers/chatgptWebRetirementResponse";
 import {
@@ -591,13 +592,7 @@ export async function testOAuthConnection(
           retryRes.ok ||
           (Array.isArray(config.acceptStatuses) && config.acceptStatuses.includes(retryRes.status));
         if (retryAccepted) {
-          return {
-            valid: true,
-            error: null,
-            refreshed: true,
-            newTokens: tokens,
-            diagnosis: makeDiagnosis("ok", "upstream", null, null),
-          };
+          return acceptedOAuthProbeResult(retryRes, true, tokens);
         }
         // The refresh itself succeeded and its tokens are already persisted
         // (onPersist inside refreshOAuthToken) — propagate them even though
@@ -658,13 +653,7 @@ export async function testOAuthConnection(
       res.ok ||
       (Array.isArray(config.acceptStatuses) && config.acceptStatuses.includes(res.status));
     if (accepted) {
-      return {
-        valid: true,
-        error: null,
-        refreshed,
-        newTokens,
-        diagnosis: makeDiagnosis("ok", "upstream", null, null),
-      };
+      return acceptedOAuthProbeResult(res, refreshed, newTokens);
     }
 
     // #12958: `res.text()` can only be read once — capture it here in the outer
@@ -755,13 +744,7 @@ export async function testOAuthConnection(
           retryRes.ok ||
           (Array.isArray(config.acceptStatuses) && config.acceptStatuses.includes(retryRes.status));
         if (retryAccepted) {
-          return {
-            valid: true,
-            error: null,
-            refreshed: true,
-            newTokens: tokens,
-            diagnosis: makeDiagnosis("ok", "upstream", null, null),
-          };
+          return acceptedOAuthProbeResult(retryRes, true, tokens);
         }
 
         const retryBody = await retryRes.text().catch(() => "");

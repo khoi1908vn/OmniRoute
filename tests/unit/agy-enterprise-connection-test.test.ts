@@ -178,3 +178,89 @@ test("Enterprise timeout remains network failure", async (t) => {
   assert.match(result.error ?? "", /Test timed out/);
   assert.equal(result.diagnosis?.type, "network_error");
 });
+
+test("accepted Enterprise stream is cancelled", async (t) => {
+  let cancelCount = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        cancel() {
+          cancelCount++;
+        },
+      })
+    );
+  });
+  const result = await testOAuthConnection(connection());
+  assert.equal(result.valid, true);
+  assert.equal(cancelCount, 1);
+  assert.equal(result.refreshed, false);
+});
+
+for (const status of [400, 401, 403]) {
+  test(`accepted stream after HTTP ${status} refresh is cancelled`, async (t) => {
+    const stored = await providersDb.createProviderConnection({
+      ...connection(),
+      projectId: context.projectId,
+      email: `retry-${status}@example.com`,
+      refreshToken: `retry-${status}`,
+      providerSpecificData: {
+        ...context,
+        oauthClient: `custom:${AGY_ENTERPRISE_CONFIG.clientId}`,
+      },
+    });
+    let probes = 0;
+    let refreshes = 0;
+    let cancelCount = 0;
+    t.mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+      if (String(url) === "https://oauth2.googleapis.com/token") {
+        refreshes++;
+        return Response.json({ access_token: `fresh-${status}`, expires_in: 3600 });
+      }
+      probes++;
+      if (probes === 1) {
+        // Token expires while the first probe is in flight, exercising the retry path.
+        stored.expiresAt = new Date(0).toISOString();
+        await providersDb.updateProviderConnection(stored.id, { expiresAt: stored.expiresAt });
+        return Response.json({ error: {} }, { status });
+      }
+      assert.equal(new Headers(init?.headers).get("Authorization"), `Bearer fresh-${status}`);
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          cancel() {
+            cancelCount++;
+          },
+        })
+      );
+    });
+    const result = await testOAuthConnection(stored);
+    assert.equal(result.valid, true);
+    assert.equal(result.refreshed, true);
+    assert.equal(refreshes, 1);
+    assert.equal(probes, 2);
+    assert.equal(cancelCount, 1);
+  });
+}
+
+test("accepted null body remains valid", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(null, { status: 204 }));
+  assert.equal((await testOAuthConnection(connection())).valid, true);
+});
+
+test("rejected stream cancellation does not change HTTP success", async (t) => {
+  let cancelCount = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        cancel() {
+          cancelCount++;
+          throw new Error("private cancellation failure");
+        },
+      })
+    );
+  });
+  const result = await testOAuthConnection(connection());
+  assert.equal(result.valid, true);
+  assert.equal(result.error, null);
+  assert.equal(cancelCount, 1);
+  assert.equal(JSON.stringify(result).includes("private cancellation failure"), false);
+});

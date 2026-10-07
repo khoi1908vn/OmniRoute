@@ -69,6 +69,13 @@ request payloads cannot override it.
 
 ## Local behavior
 
+- **Test Connection** sends `Explicitly reply with '1'` to `gemini-3.5-flash-lite`
+  using the saved project, region and tier, with temperature `0` and a maximum of
+  `8` output tokens. It consumes a small inference request; it does not discover
+  or assign a license. Success means HTTP 2xx acceptance, not verification of the
+  generated text or later SSE events. The accepted stream is cancelled promptly.
+  Tests retain the existing `connection-test` log label and do not report measured
+  inference token totals.
 - Model refresh uses an authenticated POST with body `{}` to
   `https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`.
   Only `groups[0].buckets[]` supplies model IDs and display names. Duplicate IDs are
