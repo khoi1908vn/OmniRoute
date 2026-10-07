@@ -105,6 +105,40 @@ test("missing token sends no fetch", async (t) => {
   assert.equal(calls, 0);
 });
 
+test("invalid context blocks expired-token refresh before any upstream request", async (t) => {
+  const stored = await providersDb.createProviderConnection({
+    ...connection(),
+    projectId: context.projectId,
+    email: "invalid-expired@example.com",
+    refreshToken: "synthetic-refresh",
+    expiresAt: new Date(0).toISOString(),
+    providerSpecificData: {
+      ...context,
+      oauthClient: `custom:${AGY_ENTERPRISE_CONFIG.clientId}`,
+    },
+  });
+  const before = await providersDb.getProviderConnectionById(stored.id);
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls++;
+    return Response.json({ access_token: "unexpected-refresh", expires_in: 3600 });
+  });
+  for (const providerSpecificData of [
+    undefined,
+    { ...stored.providerSpecificData, userTier: undefined },
+    { ...stored.providerSpecificData, projectId: "../unsafe" },
+    { ...stored.providerSpecificData, location: "unknown" },
+  ]) {
+    const result = await testOAuthConnection({ ...stored, providerSpecificData });
+    assert.equal(result.valid, false);
+    assert.equal(result.refreshed, false);
+    assert.equal(result.diagnosis?.source, "local");
+    assert.equal(result.diagnosis?.code, "invalid_connection_context");
+  }
+  assert.equal(calls, 0);
+  assert.deepEqual(await providersDb.getProviderConnectionById(stored.id), before);
+});
+
 test("accepted Enterprise probe returns valid", async (t) => {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   t.mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {

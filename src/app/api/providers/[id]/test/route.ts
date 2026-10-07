@@ -388,6 +388,18 @@ export async function testOAuthConnection(
     };
   }
 
+  try {
+    config.validateConnection?.(connection);
+  } catch (err) {
+    const error = toSafeMessage(err, "Invalid connection context");
+    return {
+      valid: false,
+      error,
+      refreshed: false,
+      diagnosis: makeDiagnosis("validation_error", "local", error, "invalid_connection_context"),
+    };
+  }
+
   let accessToken = connection.accessToken;
   let refreshed = false;
   let newTokens = null;

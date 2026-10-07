@@ -72,7 +72,8 @@ request payloads cannot override it.
 - **Test Connection** sends `Explicitly reply with '1'` to `gemini-3.5-flash-lite`
   using the saved project, region and tier, with temperature `0` and a maximum of
   `8` output tokens. It consumes a small inference request; it does not discover
-  or assign a license. Success means HTTP 2xx acceptance, not verification of the
+  or assign a license. Invalid saved license context is rejected before token
+  refresh or any upstream request. Success means HTTP 2xx acceptance, not verification of the
   generated text or later SSE events. The accepted stream is cancelled promptly.
   Tests retain the existing `connection-test` log label and do not report measured
   inference token totals.
