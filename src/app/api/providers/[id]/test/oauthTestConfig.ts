@@ -1,5 +1,6 @@
 import { buildGitLabOAuthEndpoints, resolveGitLabOAuthBaseUrl } from "@/lib/oauth/gitlab";
 import { ANTIGRAVITY_RUNTIME_BASE_URLS } from "@omniroute/open-sse/config/antigravityUpstream.ts";
+import { buildAgyEnterpriseProbe } from "@omniroute/open-sse/services/agyEnterpriseConnectionTest.ts";
 import { getAntigravityContentHeaders } from "@omniroute/open-sse/services/antigravityHeaders.ts";
 import { getAntigravityClientProfile } from "@omniroute/open-sse/services/antigravityClientProfile.ts";
 import {
@@ -218,6 +219,10 @@ export const OAUTH_TEST_CONFIG: Record<string, OAuthTestConfigEntry> = {
   agy: {
     buildProbe: buildAntigravityProbe,
     inconclusiveStatuses: [400],
+    refreshable: true,
+  },
+  "agy-enterprise": {
+    buildProbe: buildAgyEnterpriseProbe,
     refreshable: true,
   },
   xai: XAI_CHAT_OAUTH_TEST_CONFIG,
