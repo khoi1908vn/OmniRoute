@@ -1,7 +1,7 @@
 import type { ProviderLimitsCacheEntry } from "@/lib/db/providerLimits";
 import { sanitizeProviderBillingStatus } from "@/shared/utils/providerBilling";
 import { GROK_BUILD_ADDITIONAL_CREDITS_URL } from "@/shared/utils/grokBilling";
-import { enterpriseQuotaObservationsSchema } from "@omniroute/open-sse/utils/agyEnterprise.ts";
+import { agyEnterpriseQuotaObservationsSchema } from "@omniroute/open-sse/utils/agyEnterprise.ts";
 
 const GROK_CLI_PROVIDER = "grok-cli";
 const GLM_RESET_CARD_PROVIDERS = new Set(["glm", "glm-cn", "glmt", "zai"]);
@@ -27,7 +27,7 @@ export function toProviderLimitsCacheEntry(
   fetchedAt = new Date().toISOString()
 ): ProviderLimitsCacheEntry {
   const bankedResetCredits = Number(usage.bankedResetCredits);
-  const observations = enterpriseQuotaObservationsSchema.safeParse(usage.quotaObservations);
+  const observations = agyEnterpriseQuotaObservationsSchema.safeParse(usage.quotaObservations);
   return {
     quotas: isRecord(usage.quotas) ? usage.quotas : null,
     ...(isRecord(usage.modelQuotas) ? { modelQuotas: usage.modelQuotas } : {}),

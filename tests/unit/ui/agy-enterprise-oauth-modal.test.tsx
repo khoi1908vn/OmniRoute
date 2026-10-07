@@ -179,7 +179,7 @@ async function withModal(
 
 it("Enterprise accepts hosted code without browser verifier", async () => {
   await withModal(async (element, fetchMock) => {
-    expect(element.textContent).toContain("enterpriseCodePasteHint");
+    expect(element.textContent).toContain("agyEnterpriseCodePasteHint");
     expect(element.querySelector<HTMLInputElement>("input:not([readonly])")!.placeholder).toBe(
       "authorizationCodePlaceholder"
     );
@@ -228,8 +228,8 @@ it("unrelated callback messages do not exchange Enterprise code", async () => {
 });
 
 it.each([
-  ["https://foreign.example/oauth-callback?code=code&state=state-1", "errorEnterpriseCallback"],
-  ["https://antigravity.google/foreign?code=code&state=state-1", "errorEnterpriseCallback"],
+  ["https://foreign.example/oauth-callback?code=code&state=state-1", "errorAgyEnterpriseCallback"],
+  ["https://antigravity.google/foreign?code=code&state=state-1", "errorAgyEnterpriseCallback"],
   ["https://antigravity.google/oauth-callback?code=code&state=state-foreign", "errorStateMismatch"],
   ["https://antigravity.google/oauth-callback?code=code", "errorStateMismatch"],
 ])("full callback rejects foreign URL or mismatched state: %s", async (url, error) => {

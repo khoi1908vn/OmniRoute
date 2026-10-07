@@ -28,7 +28,7 @@ import {
 } from "@/shared/network/outboundUrlGuardPolicy";
 import { errorResponse, sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 import { getStaticQoderModels } from "@omniroute/open-sse/services/qoderCli.ts";
-import { fetchEnterpriseModels } from "@omniroute/open-sse/services/agyEnterprise.ts";
+import { fetchAgyEnterpriseModels } from "@omniroute/open-sse/services/agyEnterprise.ts";
 import { runWithProxyContextOrDirect } from "@omniroute/open-sse/utils/proxyFetch.ts";
 import { deriveConfigFromRegistryModelsUrl } from "./discoveryConfig";
 import {
@@ -1662,7 +1662,7 @@ export async function GET(
       try {
         if (!accessToken) throw new Error("Enterprise OAuth token unavailable");
         const models = await runWithProxyContextOrDirect(proxy, () =>
-          fetchEnterpriseModels(accessToken, request.signal)
+          fetchAgyEnterpriseModels(accessToken, request.signal)
         );
         return await buildApiDiscoveryResponse(models);
       } catch {

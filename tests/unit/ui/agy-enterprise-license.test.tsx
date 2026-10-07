@@ -1,7 +1,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import EnterpriseLicenseStep from "@/shared/components/oauthModal/EnterpriseLicenseStep";
+import AgyEnterpriseLicenseStep from "@/shared/components/oauthModal/AgyEnterpriseLicenseStep";
 
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 let root: Root;
@@ -37,9 +37,15 @@ const licenses = [
     supported: false,
   },
 ];
-async function render(onSaved = vi.fn()) {
+async function render(onSaved = vi.fn(), onSignInAgain = vi.fn()) {
   await act(async () =>
-    root.render(<EnterpriseLicenseStep setup={setup} onSaved={onSaved} onSignInAgain={vi.fn()} />)
+    root.render(
+      <AgyEnterpriseLicenseStep
+        setup={{ ...setup, expiresAt: Date.now() + 900_000 }}
+        onSaved={onSaved}
+        onSignInAgain={onSignInAgain}
+      />
+    )
   );
   return onSaved;
 }
@@ -132,7 +138,37 @@ it("manual setup defaults to US and sends selected EU region, then saves the ret
   expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body)).licenseId).toBe("eu-license");
 });
 
-it("discovery error preserves setup and retry loads licenses", async () => {
+it.each(["licenses", "finalize", "verify-project"])(
+  "HTTP 410 offers immediate setup restart before client expiry: %s",
+  async (action) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes(`/agy-enterprise/${action}`)
+          ? Response.json({ error: "Enterprise setup is missing or expired" }, { status: 410 })
+          : Response.json({ email: "person@example.com", licenses })
+      )
+    );
+    const onSaved = vi.fn();
+    const onSignInAgain = vi.fn();
+    await render(onSaved, onSignInAgain);
+    if (action === "verify-project") {
+      enterProject("project-one");
+      await act(async () => button("Verify project").click());
+    } else if (action === "finalize") {
+      await act(async () => button("Save").click());
+    }
+    expect(button("Sign in again")).toBeDefined();
+    expect(element.textContent).toContain("Enterprise setup expired");
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(onSignInAgain).not.toHaveBeenCalled();
+    await act(async () => button("Sign in again").click());
+    expect(onSignInAgain).toHaveBeenCalledTimes(1);
+    expect(onSaved).not.toHaveBeenCalled();
+  }
+);
+
+it("HTTP 503 preserves diagnostic and retry discovery without premature expiry", async () => {
   let failed = true;
   vi.stubGlobal(
     "fetch",
@@ -144,6 +180,9 @@ it("discovery error preserves setup and retry loads licenses", async () => {
   );
   await render();
   expect(element.querySelector('[role="alert"]')?.textContent).toBe("Try again");
+  expect(button("Retry discovery").disabled).toBe(false);
+  expect(button("Sign in again")).toBeUndefined();
+  expect(element.textContent).not.toContain("Enterprise setup expired");
   failed = false;
   await act(async () => button("Retry discovery").click());
   expect(button("Save").disabled).toBe(false);

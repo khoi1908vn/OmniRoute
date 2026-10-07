@@ -6,8 +6,8 @@
  * (+ Codex workspaceId) and update it, else create a new one, then sync to Cloud.
  */
 import { timingSafeEqual } from "crypto";
-import { upsertEnterpriseOAuthConnection } from "@/lib/db/providers";
-import { sameEnterpriseIdentity } from "@omniroute/open-sse/utils/agyEnterprise.ts";
+import { upsertAgyEnterpriseOAuthConnection } from "@/lib/db/providers";
+import { sameAgyEnterpriseIdentity } from "@omniroute/open-sse/utils/agyEnterprise.ts";
 import {
   createProviderConnection,
   updateProviderConnection,
@@ -107,7 +107,7 @@ export function findExistingOAuthConnectionMatch(
         !target ||
         target.provider !== provider ||
         target.authType !== "oauth" ||
-        !sameEnterpriseIdentity(target, tokenData)
+        !sameAgyEnterpriseIdentity(target, tokenData)
       ) {
         throw new Error("Enterprise reauthorization identity does not match");
       }
@@ -115,7 +115,7 @@ export function findExistingOAuthConnectionMatch(
     }
     return existing.find(
       (c) =>
-        c.provider === provider && c.authType === "oauth" && sameEnterpriseIdentity(c, tokenData)
+        c.provider === provider && c.authType === "oauth" && sameAgyEnterpriseIdentity(c, tokenData)
     );
   }
   return existing.find((c) => {
@@ -184,7 +184,7 @@ export async function persistOAuthConnection(
   provider: string,
   tokenData: any,
   connectionId?: string,
-  enterpriseReauthIdentity?: string
+  agyEnterpriseReauthIdentity?: string
 ) {
   // Normalize: if name is missing, use email or displayName as fallback label.
   if (!tokenData.name && (tokenData.email || tokenData.displayName)) {
@@ -197,9 +197,9 @@ export async function persistOAuthConnection(
   const degradedProject = antigravityDegradedProjectState(provider, tokenData);
 
   if (provider === "agy-enterprise") {
-    const connection = await upsertEnterpriseOAuthConnection(
+    const connection = await upsertAgyEnterpriseOAuthConnection(
       buildOAuthConnectionCreatePayload(provider, tokenData, expiresAt),
-      connectionId ? { id: connectionId, identity: enterpriseReauthIdentity } : undefined
+      connectionId ? { id: connectionId, identity: agyEnterpriseReauthIdentity } : undefined
     );
     await syncToCloudIfEnabled();
     return connection;

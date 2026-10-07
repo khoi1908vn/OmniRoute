@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { handleEnterpriseOAuth } from "../../src/lib/oauth/enterpriseSetup.ts";
+import { handleAgyEnterpriseOAuth } from "../../src/lib/oauth/agyEnterpriseSetup.ts";
 import { AGY_ENTERPRISE_CONFIG } from "../../src/lib/oauth/constants/oauth.ts";
 import { agyEnterprise } from "../../src/lib/oauth/providers/agy-enterprise.ts";
 import {
@@ -21,7 +21,7 @@ function request(action: string, owner = "", body?: unknown) {
   });
 }
 async function authorize() {
-  const response = await handleEnterpriseOAuth(
+  const response = await handleAgyEnterpriseOAuth(
     request("authorize?redirect_uri=https://foreign.example/callback"),
     "authorize"
   );
@@ -115,7 +115,7 @@ test("Enterprise authorize matches captured client/callback/scopes and retains P
     );
     return tokenResponse();
   });
-  const response = await handleEnterpriseOAuth(
+  const response = await handleAgyEnterpriseOAuth(
     request("exchange", first.owner, {
       code: " synthetic-code ",
       state: first.data.state,
@@ -141,10 +141,10 @@ test("authorization is owner-bound and expires", async (t) => {
   });
   const { owner, data } = await authorize();
   for (const [cookie, state] of [
-    [`enterprise_setup_owner=${"a".repeat(64)}`, data.state],
+    [`agy_enterprise_setup_owner=${"a".repeat(64)}`, data.state],
     [owner, "unknown-state"],
   ]) {
-    const response = await handleEnterpriseOAuth(
+    const response = await handleAgyEnterpriseOAuth(
       request("exchange", cookie, { code: "synthetic", state }),
       "exchange"
     );
@@ -154,7 +154,7 @@ test("authorization is owner-bound and expires", async (t) => {
   t.mock.method(Date, "now", () => now + 15 * 60 * 1000 + 1);
   assert.equal(
     (
-      await handleEnterpriseOAuth(
+      await handleAgyEnterpriseOAuth(
         request("exchange", owner, { code: "synthetic", state: data.state }),
         "exchange"
       )
@@ -184,7 +184,7 @@ test("concurrent exchange consumes authorization once", async (t) => {
     const before = calls;
     const responses = await Promise.all(
       [1, 2].map(() =>
-        handleEnterpriseOAuth(
+        handleAgyEnterpriseOAuth(
           request("exchange", owner, { code: "synthetic", state: data.state, connectionId }),
           "exchange"
         )
@@ -205,7 +205,7 @@ test("foreign code fails PKCE and cannot create setup or connection", async (t) 
       { status: 400 }
     )
   );
-  const result = await handleEnterpriseOAuth(
+  const result = await handleAgyEnterpriseOAuth(
     request("exchange", owner, { code: "foreign-code", state: data.state }),
     "exchange"
   );
@@ -217,7 +217,7 @@ test("foreign code fails PKCE and cannot create setup or connection", async (t) 
   assert.equal((await getProviderConnections({ provider: "agy-enterprise" })).length, before);
   assert.equal(
     (
-      await handleEnterpriseOAuth(
+      await handleAgyEnterpriseOAuth(
         request("exchange", owner, { code: "synthetic", state: data.state }),
         "exchange"
       )
@@ -233,7 +233,7 @@ test("Enterprise exchange rejects issuer rotation and invalid reauthorization ta
     return tokenResponse();
   });
   const { owner, data } = await authorize();
-  const target = await handleEnterpriseOAuth(
+  const target = await handleAgyEnterpriseOAuth(
     request("exchange", owner, {
       code: "synthetic",
       state: data.state,
@@ -247,7 +247,7 @@ test("Enterprise exchange rejects issuer rotation and invalid reauthorization ta
     AGY_ENTERPRISE_CONFIG.clientId = "rotated-client";
     assert.match(
       await (
-        await handleEnterpriseOAuth(
+        await handleAgyEnterpriseOAuth(
           request("exchange", owner, { code: "synthetic", state: data.state }),
           "exchange"
         )
@@ -277,7 +277,7 @@ test("Enterprise token exchange diagnostics redact echoed credentials and stack 
       { status: 400 }
     );
   });
-  const response = await handleEnterpriseOAuth(
+  const response = await handleAgyEnterpriseOAuth(
     request("exchange", owner, { code: "opaque-secret-code", state: data.state }),
     "exchange"
   );

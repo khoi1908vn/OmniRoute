@@ -45,7 +45,7 @@ import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 import { GITLAB_DUO_OAUTH_SETUP_MESSAGE } from "@/shared/constants/gitlabDuoSetupMessage";
 import { keychainImportOnlyGuard } from "./keychainImportOnly";
 import { buildRemoteOAuthHint } from "./remoteOAuthHint";
-import { handleEnterpriseOAuth } from "@/lib/oauth/enterpriseSetup";
+import { handleAgyEnterpriseOAuth } from "@/lib/oauth/agyEnterpriseSetup";
 
 // Persist one callback server per provider across Next.js HMR reloads.
 if (!globalThis.__pkceCallbackStates) {
@@ -166,7 +166,7 @@ export async function GET(
     const { provider, action } = await params;
     const { searchParams } = new URL(request.url);
 
-    if (provider === "agy-enterprise") return handleEnterpriseOAuth(request, action);
+    if (provider === "agy-enterprise") return handleAgyEnterpriseOAuth(request, action);
 
     if (action === "authorize") {
       const requestedRedirectUri =
@@ -442,7 +442,7 @@ export async function POST(
       );
     }
 
-    if (provider === "agy-enterprise") return handleEnterpriseOAuth(request, action);
+    if (provider === "agy-enterprise") return handleAgyEnterpriseOAuth(request, action);
 
     let rawBody: any = {};
     try {

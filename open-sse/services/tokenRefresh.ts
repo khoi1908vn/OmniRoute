@@ -48,7 +48,7 @@ import { refreshClaudeOAuthToken } from "./tokenRefresh/providers/claudeOAuth.ts
 import { refreshGoogleToken } from "./tokenRefresh/providers/google.ts";
 import {
   selectGoogleRefreshClient,
-  EnterpriseOAuthReauthorizationError,
+  AgyEnterpriseOAuthReauthorizationError,
 } from "./tokenRefresh/googleClientBinding.ts";
 import {
   ensureAntigravityProjectAssigned,
@@ -559,10 +559,10 @@ export async function getAccessToken(
         PROVIDERS[provider]
       );
     } catch (error) {
-      if (!(error instanceof EnterpriseOAuthReauthorizationError)) throw error;
+      if (!(error instanceof AgyEnterpriseOAuthReauthorizationError)) throw error;
       return {
         error: "unrecoverable_refresh_error",
-        code: "enterprise_oauth_reauthorization_required",
+        code: "agy_enterprise_oauth_reauthorization_required",
       };
     }
   }

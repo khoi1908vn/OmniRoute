@@ -1,21 +1,21 @@
 import { z } from "zod";
 
-export const enterpriseProjectSchema = z.string().regex(/^[a-z][a-z0-9-]{4,61}[a-z0-9]$/);
-export const enterpriseLicenseSchema = z.object({
-  projectId: enterpriseProjectSchema,
+export const agyEnterpriseProjectSchema = z.string().regex(/^[a-z][a-z0-9-]{4,61}[a-z0-9]$/);
+export const agyEnterpriseLicenseSchema = z.object({
+  projectId: agyEnterpriseProjectSchema,
   location: z.string().min(1).max(64),
   userTier: z.string().min(1).max(200),
   tierDisplayName: z.string().max(200).optional(),
 });
-export const enterpriseLocationSchema = z.enum(["us", "eu"]);
-export type EnterpriseLocation = z.infer<typeof enterpriseLocationSchema>;
-export const enterpriseContextSchema = enterpriseLicenseSchema.extend({
-  location: enterpriseLocationSchema,
+export const agyEnterpriseLocationSchema = z.enum(["us", "eu"]);
+export type AgyEnterpriseLocation = z.infer<typeof agyEnterpriseLocationSchema>;
+export const agyEnterpriseContextSchema = agyEnterpriseLicenseSchema.extend({
+  location: agyEnterpriseLocationSchema,
 });
-export type EnterpriseContext = z.infer<typeof enterpriseContextSchema>;
-export type EnterpriseLicense = z.infer<typeof enterpriseLicenseSchema>;
+export type AgyEnterpriseContext = z.infer<typeof agyEnterpriseContextSchema>;
+export type AgyEnterpriseLicense = z.infer<typeof agyEnterpriseLicenseSchema>;
 
-export const enterpriseQuotaObservationsSchema = z.object({
+export const agyEnterpriseQuotaObservationsSchema = z.object({
   source: z.literal("cloudcode-pa:retrieveUserQuotaSummary"),
   observedAt: z.string().datetime(),
   authority: z.literal("advisory"),
@@ -29,7 +29,7 @@ export const enterpriseQuotaObservationsSchema = z.object({
     )
     .max(200),
 });
-export type EnterpriseQuotaObservations = z.infer<typeof enterpriseQuotaObservationsSchema>;
+export type AgyEnterpriseQuotaObservations = z.infer<typeof agyEnterpriseQuotaObservationsSchema>;
 
 type IdentityConnection = {
   provider?: unknown;
@@ -49,7 +49,7 @@ function normalized(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
-export function sameEnterpriseIdentity(a: IdentityConnection, b: IdentityConnection): boolean {
+export function sameAgyEnterpriseIdentity(a: IdentityConnection, b: IdentityConnection): boolean {
   const left = metadata(a);
   const right = metadata(b);
   if (
@@ -64,7 +64,7 @@ export function sameEnterpriseIdentity(a: IdentityConnection, b: IdentityConnect
 }
 
 /** Snapshot used to detect a changed reauthorization target inside the write transaction. */
-export function enterpriseIdentitySnapshot(connection: IdentityConnection): string {
+export function agyEnterpriseIdentitySnapshot(connection: IdentityConnection): string {
   const data = metadata(connection);
   return JSON.stringify([
     connection.provider,

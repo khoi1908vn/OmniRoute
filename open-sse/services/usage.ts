@@ -85,7 +85,7 @@ import { getQwenTokenPlanUsage } from "./usage/qwen-token-plan.ts";
 import { getConolUsage } from "./conolUsage.ts";
 import { getAgentrouterUsage } from "./usage/agentrouter.ts";
 import { getKilocodeUsage } from "./usage/kilocode.ts";
-import { getEnterpriseUsage } from "./usage/agyEnterprise.ts";
+import { getAgyEnterpriseUsage } from "./usage/agyEnterprise.ts";
 
 type JsonRecord = Record<string, unknown>;
 type UsageProviderConnection = JsonRecord & {
@@ -141,7 +141,7 @@ export async function getUsageForProvider(
 
   switch (provider) {
     case "agy-enterprise":
-      return await getEnterpriseUsage(accessToken, providerSpecificData);
+      return await getAgyEnterpriseUsage(accessToken, providerSpecificData);
     case "github":
       return await getGitHubUsage(accessToken, providerSpecificData);
     case "antigravity":

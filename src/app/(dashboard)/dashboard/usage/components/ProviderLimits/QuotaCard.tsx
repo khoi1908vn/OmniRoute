@@ -21,7 +21,7 @@ import {
 import QuotaCardHeader from "./parts/QuotaCardHeader";
 import QuotaCardExpanded from "./parts/QuotaCardExpanded";
 import ProviderUsdCostModal from "./ProviderUsdCostModal";
-import type { EnterpriseQuotaObservations } from "@omniroute/open-sse/utils/agyEnterprise.ts";
+import type { AgyEnterpriseQuotaObservations } from "@omniroute/open-sse/utils/agyEnterprise.ts";
 
 const STATUS_BORDER: Record<CardStatus, string> = {
   critical: "#ef4444",
@@ -42,7 +42,7 @@ interface QuotaCardProps {
         billing?: ProviderBillingStatus | null;
         raw?: {
           billing?: ProviderBillingStatus | null;
-          quotaObservations?: EnterpriseQuotaObservations;
+          quotaObservations?: AgyEnterpriseQuotaObservations;
         };
         stale?: { since?: string; reason?: string } | null;
       }

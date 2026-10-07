@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import * as enterprise from "../../open-sse/services/agyEnterprise.ts";
+import * as agyEnterprise from "../../open-sse/services/agyEnterprise.ts";
 
 const dataDir = mkdtempSync(join(tmpdir(), "enterprise-models-"));
 process.env.DATA_DIR = dataDir;
@@ -14,7 +14,7 @@ const { addCustomModel, setModelIsHidden } = await import("../../src/lib/db/mode
 const { getCachedDiscoveredModels } =
   await import("../../src/lib/providerModels/modelDiscovery.ts");
 const { GET } = await import("../../src/app/api/providers/[id]/models/route.ts");
-const { getEnterpriseUsage } = await import("../../open-sse/services/usage/agyEnterprise.ts");
+const { getAgyEnterpriseUsage } = await import("../../open-sse/services/usage/agyEnterprise.ts");
 test.after(() => {
   core.resetDbInstance();
   rmSync(dataDir, { recursive: true, force: true, maxRetries: 5 });
@@ -71,8 +71,8 @@ test("model discovery reads first-group buckets including exhausted IDs and pres
     assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer synthetic");
     return Response.json(summary);
   });
-  assert.equal(typeof enterprise.fetchEnterpriseModels, "function");
-  assert.deepEqual(await enterprise.fetchEnterpriseModels("synthetic"), [
+  assert.equal(typeof agyEnterprise.fetchAgyEnterpriseModels, "function");
+  assert.deepEqual(await agyEnterprise.fetchAgyEnterpriseModels("synthetic"), [
     {
       id: "gemini-3.8-flash-high",
       name: "Gemini Flash High",
@@ -164,7 +164,7 @@ test("disabled automatic discovery makes no request; explicit refresh merges cus
     withoutCustom.models.find((m: { id: string }) => m.id === "custom-experience").name,
     "custom-experience"
   );
-  const usage = await getEnterpriseUsage("synthetic", c.providerSpecificData);
+  const usage = await getAgyEnterpriseUsage("synthetic", c.providerSpecificData);
   assert.equal(usage.quotas, null);
   assert.equal(usage.quotaObservations?.authority, "advisory");
   assert.equal((await getProviderConnectionById(c.id)).testStatus, "unavailable");

@@ -43,9 +43,9 @@ import { reconcileCodexUsageHistory } from "./providers/usageIdentityReconciliat
 import { isRuntimeRetiredProviderId } from "@/shared/constants/providerRetirement";
 import { applyCodexChildCooldownClearOnUpdate } from "./providers/codexAccountState";
 import {
-  sameEnterpriseIdentity,
-  enterpriseLicenseSchema,
-  enterpriseIdentitySnapshot,
+  sameAgyEnterpriseIdentity,
+  agyEnterpriseLicenseSchema,
+  agyEnterpriseIdentitySnapshot,
 } from "@omniroute/open-sse/utils/agyEnterprise.ts";
 
 /**
@@ -517,19 +517,19 @@ export async function createProviderConnection(data: JsonRecord) {
   await assertApiKeyIsNotManagementPassword(data.apiKey);
   const db = getDbInstance() as unknown as DbLike;
   if (data.provider === "agy-enterprise" && data.authType === "oauth") {
-    return upsertEnterpriseOAuthConnection(data);
+    return upsertAgyEnterpriseOAuthConnection(data);
   }
   return createProviderConnectionRow(data, db);
 }
 
-export function upsertEnterpriseOAuthConnection(
+export function upsertAgyEnterpriseOAuthConnection(
   data: JsonRecord,
   target?: { id: string; identity?: string }
 ) {
   if (data.provider !== "agy-enterprise" || data.authType !== "oauth") {
     throw new Error("Enterprise OAuth credentials required");
   }
-  const context = enterpriseLicenseSchema.parse(data.providerSpecificData);
+  const context = agyEnterpriseLicenseSchema.parse(data.providerSpecificData);
   if (data.projectId !== context.projectId) throw new Error("Enterprise project context mismatch");
   const identity = toRecord(data.providerSpecificData);
   if (
@@ -546,8 +546,8 @@ export function upsertEnterpriseOAuthConnection(
         !existing ||
         existing.provider !== "agy-enterprise" ||
         existing.authType !== "oauth" ||
-        !sameEnterpriseIdentity(existing, data) ||
-        (target.identity && enterpriseIdentitySnapshot(existing) !== target.identity)
+        !sameAgyEnterpriseIdentity(existing, data) ||
+        (target.identity && agyEnterpriseIdentitySnapshot(existing) !== target.identity)
       ) {
         throw new Error(
           "Enterprise reauthorization target was deleted or its identity does not match"
@@ -558,7 +558,7 @@ export function upsertEnterpriseOAuthConnection(
   })();
 }
 
-function createProviderConnectionRow(data: JsonRecord, db: DbLike, enterpriseTargetId?: string) {
+function createProviderConnectionRow(data: JsonRecord, db: DbLike, agyEnterpriseTargetId?: string) {
   const now = new Date().toISOString();
   const normalizedProviderSpecificData = normalizeConnectionProviderSpecificData(
     toStringOrNull(data.provider),
@@ -579,9 +579,9 @@ function createProviderConnectionRow(data: JsonRecord, db: DbLike, enterpriseTar
       .all(data.provider) as JsonRecord[];
     existing =
       rows.find((row) =>
-        enterpriseTargetId
-          ? row.id === enterpriseTargetId
-          : sameEnterpriseIdentity(toRecord(rowToCamel(row)), data)
+        agyEnterpriseTargetId
+          ? row.id === agyEnterpriseTargetId
+          : sameAgyEnterpriseIdentity(toRecord(rowToCamel(row)), data)
       ) || null;
   } else if (data.authType === "oauth" && data.provider === "codex" && chatgptUserId) {
     const strongSql = workspaceId
@@ -715,6 +715,13 @@ function createProviderConnectionRow(data: JsonRecord, db: DbLike, enterpriseTar
     const rawExisting = toRecord(rowToCamel(existing));
     const decryptedExisting = decryptConnectionFields({ ...rawExisting });
     const merged: JsonRecord = { ...decryptedExisting, ...data, updatedAt: now };
+    const isAgyEnterpriseOAuth = data.provider === "agy-enterprise" && data.authType === "oauth";
+    if (isAgyEnterpriseOAuth) {
+      merged.providerSpecificData = {
+        ...toRecord(decryptedExisting.providerSpecificData),
+        ...toRecord(data.providerSpecificData),
+      };
+    }
     merged.providerSpecificData = normalizeConnectionProviderSpecificData(
       toStringOrNull(merged.provider),
       merged.providerSpecificData,
@@ -723,8 +730,9 @@ function createProviderConnectionRow(data: JsonRecord, db: DbLike, enterpriseTar
     );
     const persistence: JsonRecord = { ...merged };
     for (const field of CONNECTION_CREDENTIAL_FIELDS) {
-      if (!Object.hasOwn(data, field)) {
+      if (!Object.hasOwn(data, field) || (isAgyEnterpriseOAuth && data[field] === undefined)) {
         persistence[field] = rawExisting[field];
+        if (isAgyEnterpriseOAuth) merged[field] = decryptedExisting[field];
       }
     }
     db.transaction(() => {

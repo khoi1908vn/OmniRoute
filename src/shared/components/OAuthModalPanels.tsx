@@ -381,7 +381,7 @@ export function OAuthManualInputPanel({
           <p className="text-sm font-medium mb-2">{t("step2PasteCallback")}</p>
           <p className="text-xs text-text-muted mb-2">
             {provider === "agy-enterprise"
-              ? t("enterpriseCodePasteHint")
+              ? t("agyEnterpriseCodePasteHint")
               : t.rich("step2Hint", {
                   code: (chunks) => <code className="font-mono">{chunks}</code>,
                 })}

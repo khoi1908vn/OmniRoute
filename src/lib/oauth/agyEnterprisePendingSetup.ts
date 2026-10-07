@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import {
-  enterpriseContextSchema,
-  type EnterpriseLicense,
+  agyEnterpriseContextSchema,
+  type AgyEnterpriseLicense,
 } from "@omniroute/open-sse/utils/agyEnterprise.ts";
 
-export type EnterpriseTokens = {
+export type AgyEnterpriseTokens = {
   accessToken: string;
   refreshToken?: string;
   expiresAt: string;
@@ -13,25 +13,26 @@ export type EnterpriseTokens = {
   email?: string;
   providerSpecificData: Record<string, unknown>;
 };
-export type EnterpriseResult = { status: "completed"; connectionId: string };
+export type AgyEnterpriseResult = { status: "completed"; connectionId: string };
+export type AgyEnterpriseLicenseSource = "discovered" | "custom";
 type Ticket = {
   owner: string;
   expiresAt: number;
-  tokens?: EnterpriseTokens;
+  tokens?: AgyEnterpriseTokens;
   target?: { id: string; identity: string };
-  licenses: Map<string, EnterpriseLicense>;
+  licenses: Map<string, AgyEnterpriseLicense & { licenseSource: AgyEnterpriseLicenseSource }>;
   state: "pending" | "finalizing" | "completed" | "cancelled";
   controller: AbortController;
-  attempt?: Promise<EnterpriseResult>;
+  attempt?: Promise<AgyEnterpriseResult>;
   selection?: string;
-  result?: EnterpriseResult;
+  result?: AgyEnterpriseResult;
 };
 
 /** ponytail: one process; use shared storage before deploying multiple instances. */
-export class EnterprisePendingSetup {
+export class AgyEnterprisePendingSetup {
   private tickets = new Map<string, Ticket>();
   constructor(private now: () => number = Date.now) {}
-  create(owner: string, tokens: EnterpriseTokens, target?: Ticket["target"]) {
+  create(owner: string, tokens: AgyEnterpriseTokens, target?: Ticket["target"]) {
     this.cleanup();
     if (this.tickets.size >= 1000) throw new Error("Too many pending Enterprise setups");
     const setupId = randomUUID();
@@ -66,24 +67,29 @@ export class EnterprisePendingSetup {
       throw Object.assign(new Error("Enterprise setup cancelled"), { status: 410 });
     return ticket;
   }
-  pending(id: string, owner: string): Ticket & { tokens: EnterpriseTokens } {
+  pending(id: string, owner: string): Ticket & { tokens: AgyEnterpriseTokens } {
     const ticket = this.get(id, owner);
     if (ticket.state !== "pending" || !ticket.tokens)
       throw new Error("Enterprise setup is no longer pending");
-    return ticket as Ticket & { tokens: EnterpriseTokens };
+    return ticket as Ticket & { tokens: AgyEnterpriseTokens };
   }
-  addLicenses(id: string, owner: string, licenses: EnterpriseLicense[]) {
+  addLicenses(
+    id: string,
+    owner: string,
+    licenses: AgyEnterpriseLicense[],
+    source: AgyEnterpriseLicenseSource
+  ) {
     const ticket = this.pending(id, owner);
     for (const license of licenses) {
       const existing = [...ticket.licenses].find(
         ([, entry]) => entry.projectId === license.projectId && entry.location === license.location
       );
-      ticket.licenses.set(existing?.[0] || randomUUID(), license);
+      ticket.licenses.set(existing?.[0] || randomUUID(), { ...license, licenseSource: source });
     }
     return [...ticket.licenses].map(([licenseId, license]) => ({
       licenseId,
       ...license,
-      supported: enterpriseContextSchema.safeParse(license).success,
+      supported: agyEnterpriseContextSchema.safeParse(license).success,
     }));
   }
   cancel(id: string, owner: string) {
@@ -99,16 +105,22 @@ export class EnterprisePendingSetup {
     id: string,
     owner: string,
     licenseId: string,
-    validate: (ticket: Ticket, license: EnterpriseLicense) => Promise<void>,
-    commit: (ticket: Ticket, license: EnterpriseLicense) => string
-  ): Promise<EnterpriseResult> {
+    validate: (
+      ticket: Ticket,
+      license: AgyEnterpriseLicense & { licenseSource: AgyEnterpriseLicenseSource }
+    ) => Promise<void>,
+    commit: (
+      ticket: Ticket,
+      license: AgyEnterpriseLicense & { licenseSource: AgyEnterpriseLicenseSource }
+    ) => string
+  ): Promise<AgyEnterpriseResult> {
     const ticket = this.get(id, owner);
     if (ticket.selection && ticket.selection !== licenseId)
       throw new Error("Enterprise setup selection is already frozen");
     if (ticket.result) return Promise.resolve(ticket.result);
     if (ticket.attempt) return ticket.attempt;
     const license = ticket.licenses.get(licenseId);
-    if (!enterpriseContextSchema.safeParse(license).success)
+    if (!agyEnterpriseContextSchema.safeParse(license).success)
       throw new Error("Select a verified US or EU license");
     ticket.selection = licenseId;
     ticket.state = "finalizing";
@@ -137,7 +149,7 @@ export class EnterprisePendingSetup {
   }
 }
 const processState = globalThis as typeof globalThis & {
-  enterprisePendingSetup?: EnterprisePendingSetup;
+  agyEnterprisePendingSetup?: AgyEnterprisePendingSetup;
 };
-export const enterprisePendingSetup = (processState.enterprisePendingSetup ||=
-  new EnterprisePendingSetup());
+export const agyEnterprisePendingSetup = (processState.agyEnterprisePendingSetup ||=
+  new AgyEnterprisePendingSetup());

@@ -20,15 +20,15 @@ import {
 
 const CUSTOM_ID = "custom-client-id.apps.googleusercontent.com";
 
-let enterpriseAttempt = 0;
-async function enterpriseRefresh(marker: unknown) {
+let agyEnterpriseAttempt = 0;
+async function agyEnterpriseRefresh(marker: unknown) {
   const forms: URLSearchParams[] = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (_input, init) => {
     forms.push(new URLSearchParams(String(init?.body)));
     return Response.json({ access_token: "synthetic-refreshed-access", expires_in: 3600 });
   };
-  const refreshToken = `synthetic-enterprise-refresh-${++enterpriseAttempt}`;
+  const refreshToken = `synthetic-enterprise-refresh-${++agyEnterpriseAttempt}`;
   try {
     const result = await getAccessToken(
       "agy-enterprise",
@@ -46,7 +46,7 @@ async function enterpriseRefresh(marker: unknown) {
 
 test("Enterprise refresh uses issuing client", async () => {
   const id = resolvePublicCred("agy_enterprise_id", "AGY_ENTERPRISE_OAUTH_CLIENT_ID");
-  const { result, forms, refreshToken } = await enterpriseRefresh(`custom:${id}`);
+  const { result, forms, refreshToken } = await agyEnterpriseRefresh(`custom:${id}`);
   assert.equal(result.accessToken, "synthetic-refreshed-access");
   assert.equal(forms.length, 1);
   assert.equal(forms[0].get("grant_type"), "refresh_token");
@@ -61,10 +61,10 @@ test("Enterprise refresh uses issuing client", async () => {
 
 test("legacy Enterprise requires reauthorization without network", async () => {
   for (const marker of [undefined, "builtin", "custom", "custom:", 42, null]) {
-    const { result, forms } = await enterpriseRefresh(marker);
+    const { result, forms } = await agyEnterpriseRefresh(marker);
     assert.deepEqual(result, {
       error: "unrecoverable_refresh_error",
-      code: "enterprise_oauth_reauthorization_required",
+      code: "agy_enterprise_oauth_reauthorization_required",
     });
     assert.equal(forms.length, 0);
   }
@@ -83,7 +83,10 @@ test("Enterprise issuer validation cannot be bypassed by a cached rotation", asy
         { refreshToken: token, providerSpecificData: { oauthClient: "builtin" } },
         null
       ),
-      { error: "unrecoverable_refresh_error", code: "enterprise_oauth_reauthorization_required" }
+      {
+        error: "unrecoverable_refresh_error",
+        code: "agy_enterprise_oauth_reauthorization_required",
+      }
     );
   } finally {
     _clearTokenRotationMap();
@@ -97,15 +100,15 @@ test("rotated Enterprise issuer never falls back", async () => {
   try {
     config.clientId = "rotated-enterprise-client";
     config.clientSecret = "rotated-enterprise-secret";
-    const { result, forms } = await enterpriseRefresh(
+    const { result, forms } = await agyEnterpriseRefresh(
       `custom:${resolvePublicCred("agy_enterprise_id")}`
     );
     assert.deepEqual(result, {
       error: "unrecoverable_refresh_error",
-      code: "enterprise_oauth_reauthorization_required",
+      code: "agy_enterprise_oauth_reauthorization_required",
     });
     assert.equal(forms.length, 0);
-    const configured = await enterpriseRefresh("custom:rotated-enterprise-client");
+    const configured = await agyEnterpriseRefresh("custom:rotated-enterprise-client");
     assert.equal(configured.forms[0].get("client_id"), "rotated-enterprise-client");
     assert.equal(configured.forms[0].get("client_secret"), "rotated-enterprise-secret");
     assert.throws(

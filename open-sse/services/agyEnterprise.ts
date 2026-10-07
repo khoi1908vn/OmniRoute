@@ -1,20 +1,21 @@
 import { z } from "zod";
 import { sanitizeErrorMessage, sanitizeUpstreamDetails } from "../utils/error.ts";
 import {
-  enterpriseContextSchema,
-  enterpriseLicenseSchema,
-  enterpriseQuotaObservationsSchema,
-  type EnterpriseContext,
-  type EnterpriseLocation,
+  agyEnterpriseContextSchema,
+  agyEnterpriseLicenseSchema,
+  agyEnterpriseQuotaObservationsSchema,
+  type AgyEnterpriseContext,
+  type AgyEnterpriseLocation,
 } from "@omniroute/open-sse/utils/agyEnterprise.ts";
+import { antigravityCliUserAgent } from "./antigravityHeaders.ts";
 
-export const enterpriseQuotaSummarySchema = z.object({
+export const agyEnterpriseQuotaSummarySchema = z.object({
   groups: z
     .array(
       z.object({
         buckets: z
           .array(
-            enterpriseQuotaObservationsSchema.shape.buckets.element.extend({
+            agyEnterpriseQuotaObservationsSchema.shape.buckets.element.extend({
               bucketId: z.string().min(1).max(200).regex(/\S/),
             })
           )
@@ -23,14 +24,14 @@ export const enterpriseQuotaSummarySchema = z.object({
     )
     .max(100),
 });
-export type EnterpriseQuotaSummary = z.infer<typeof enterpriseQuotaSummarySchema>;
+export type AgyEnterpriseQuotaSummary = z.infer<typeof agyEnterpriseQuotaSummarySchema>;
 
-export async function fetchEnterpriseQuotaSummary(
+export async function fetchAgyEnterpriseQuotaSummary(
   accessToken: string,
   signal?: AbortSignal
-): Promise<EnterpriseQuotaSummary> {
-  return enterpriseQuotaSummarySchema.parse(
-    await enterpriseFetchJson(
+): Promise<AgyEnterpriseQuotaSummary> {
+  return agyEnterpriseQuotaSummarySchema.parse(
+    await agyEnterpriseFetchJson(
       "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
       accessToken,
       { method: "POST", body: "{}", signal }
@@ -38,11 +39,11 @@ export async function fetchEnterpriseQuotaSummary(
   );
 }
 
-export async function fetchEnterpriseModels(
+export async function fetchAgyEnterpriseModels(
   accessToken: string,
   signal?: AbortSignal
 ): Promise<Array<{ id: string; name: string; apiFormat: "gemini"; supportsTools: false }>> {
-  const summary = await fetchEnterpriseQuotaSummary(accessToken, signal);
+  const summary = await fetchAgyEnterpriseQuotaSummary(accessToken, signal);
   const seen = new Set<string>();
   return (summary.groups[0]?.buckets || []).flatMap((bucket) => {
     if (seen.has(bucket.bucketId)) return [];
@@ -58,25 +59,24 @@ export async function fetchEnterpriseModels(
   });
 }
 
-export const ENTERPRISE_US_HOST = "https://businessaicode.us.rep.googleapis.com";
-const ENTERPRISE_HOSTS: Record<EnterpriseLocation, string> = {
-  us: ENTERPRISE_US_HOST,
+export const AGY_ENTERPRISE_US_HOST = "https://businessaicode.us.rep.googleapis.com";
+const AGY_ENTERPRISE_HOSTS: Record<AgyEnterpriseLocation, string> = {
+  us: AGY_ENTERPRISE_US_HOST,
   eu: "https://businessaicode.eu.rep.googleapis.com",
 };
-export function enterpriseResource(context: EnterpriseContext): string {
-  const checked = enterpriseContextSchema.parse(context);
-  return `${ENTERPRISE_HOSTS[checked.location]}/v1beta/projects/${encodeURIComponent(checked.projectId)}/locations/${checked.location}`;
+export function agyEnterpriseResource(context: AgyEnterpriseContext): string {
+  const checked = agyEnterpriseContextSchema.parse(context);
+  return `${AGY_ENTERPRISE_HOSTS[checked.location]}/v1beta/projects/${encodeURIComponent(checked.projectId)}/locations/${checked.location}`;
 }
-export function enterpriseHeaders(accessToken: string): Record<string, string> {
+export function agyEnterpriseHeaders(accessToken: string): Record<string, string> {
   return {
     Authorization: `Bearer ${accessToken}`,
     "Content-Type": "application/json",
-    // Captured Enterprise CLI identity; independent of personal Antigravity defaults.
-    "User-Agent":
-      "antigravity/cli/1.2.14 (aidev_client; os_type=windows; arch=amd64; cl=990662481; auth_method=gcp)",
+    // Shared CLI version cache and platform fingerprint with the Enterprise auth method.
+    "User-Agent": antigravityCliUserAgent(undefined, "gcp"),
   };
 }
-export async function enterpriseFetchJson(
+export async function agyEnterpriseFetchJson(
   url: string,
   accessToken: string,
   init: RequestInit = {}
@@ -84,7 +84,7 @@ export async function enterpriseFetchJson(
   const startedAt = Date.now();
   const response = await fetch(url, {
     ...init,
-    headers: enterpriseHeaders(accessToken),
+    headers: agyEnterpriseHeaders(accessToken),
     signal: init.signal
       ? AbortSignal.any([init.signal, AbortSignal.timeout(15_000)])
       : AbortSignal.timeout(15_000),
@@ -128,26 +128,26 @@ export async function enterpriseFetchJson(
   }
   return response.json();
 }
-export async function fetchEnterpriseLicenses(accessToken: string, signal?: AbortSignal) {
+export async function fetchAgyEnterpriseLicenses(accessToken: string, signal?: AbortSignal) {
   return z
-    .object({ licenses: z.array(enterpriseLicenseSchema).default([]) })
+    .object({ licenses: z.array(agyEnterpriseLicenseSchema).default([]) })
     .parse(
-      await enterpriseFetchJson(
+      await agyEnterpriseFetchJson(
         "https://businessaicode.googleapis.com/v1beta:fetchLicenses",
         accessToken,
         { signal }
       )
     ).licenses;
 }
-export async function assignEnterpriseLicense(
+export async function assignAgyEnterpriseLicense(
   accessToken: string,
   projectId: string,
-  location: EnterpriseLocation,
+  location: AgyEnterpriseLocation,
   signal?: AbortSignal
 ) {
-  const resource = enterpriseResource({ projectId, location, userTier: "pending" });
-  const license = z.object({ license: enterpriseLicenseSchema }).parse(
-    await enterpriseFetchJson(`${resource}:selfAssignLicense`, accessToken, {
+  const resource = agyEnterpriseResource({ projectId, location, userTier: "pending" });
+  const license = z.object({ license: agyEnterpriseLicenseSchema }).parse(
+    await agyEnterpriseFetchJson(`${resource}:selfAssignLicense`, accessToken, {
       method: "POST",
       body: JSON.stringify({ parent: `projects/${projectId}/locations/${location}` }),
       signal,
@@ -157,17 +157,17 @@ export async function assignEnterpriseLicense(
     throw new Error("Enterprise assignment returned a different project/location context");
   return license;
 }
-export async function fetchEnterpriseConfig(
+export async function fetchAgyEnterpriseConfig(
   accessToken: string,
-  context: EnterpriseContext,
+  context: AgyEnterpriseContext,
   signal?: AbortSignal
 ) {
   return z
     .object({ adminControls: z.record(z.string(), z.unknown()) })
     .passthrough()
     .parse(
-      await enterpriseFetchJson(
-        `${enterpriseResource(context)}:fetchConfig?entitlement.userTier=${encodeURIComponent(context.userTier)}`,
+      await agyEnterpriseFetchJson(
+        `${agyEnterpriseResource(context)}:fetchConfig?entitlement.userTier=${encodeURIComponent(context.userTier)}`,
         accessToken,
         { signal }
       )

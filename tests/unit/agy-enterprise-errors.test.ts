@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { enterpriseFetchJson } from "../../open-sse/services/agyEnterprise.ts";
+import { agyEnterpriseFetchJson } from "../../open-sse/services/agyEnterprise.ts";
 
 const endpoint = "https://businessaicode.googleapis.com/v1beta:fetchLicenses";
 
@@ -29,7 +29,7 @@ test("Enterprise 403 preserves Google diagnostics in errors and logs without cre
       { status: 403, statusText: "Forbidden", headers: { "x-request-id": "request-one" } }
     )
   );
-  await assert.rejects(enterpriseFetchJson(endpoint, "opaque-test-access"), (error: unknown) => {
+  await assert.rejects(agyEnterpriseFetchJson(endpoint, "opaque-test-access"), (error: unknown) => {
     assert.ok(error instanceof Error);
     const failure = error as Error & {
       status: number;
@@ -58,17 +58,20 @@ test("Enterprise errors retain non-JSON and empty bodies and tolerate unreadable
   t.mock.method(console, "error", () => {});
   for (const body of ["Proxy denied access: Bearer opaque-test-access", ""]) {
     t.mock.method(globalThis, "fetch", async () => new Response(body, { status: 502 }));
-    await assert.rejects(enterpriseFetchJson(endpoint, "opaque-test-access"), (error: unknown) => {
-      assert.ok(error instanceof Error);
-      assert.match(error.message, body ? /Proxy denied access/ : /empty response body/);
-      assert.ok(!error.message.includes("opaque-test-access"));
-      return true;
-    });
+    await assert.rejects(
+      agyEnterpriseFetchJson(endpoint, "opaque-test-access"),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, body ? /Proxy denied access/ : /empty response body/);
+        assert.ok(!error.message.includes("opaque-test-access"));
+        return true;
+      }
+    );
   }
   const response = new Response("failure", { status: 503 });
   t.mock.method(response, "text", async () => {
     throw new Error("body read failed");
   });
   t.mock.method(globalThis, "fetch", async () => response);
-  await assert.rejects(enterpriseFetchJson(endpoint, "opaque-test-access"), /Unable to read/);
+  await assert.rejects(agyEnterpriseFetchJson(endpoint, "opaque-test-access"), /Unable to read/);
 });

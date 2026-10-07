@@ -27,7 +27,7 @@ import {
   sortQuotasByWindow,
 } from "../quotaParsing";
 import KiloPassMeter from "./KiloPassMeter";
-import type { EnterpriseQuotaObservations } from "@omniroute/open-sse/utils/agyEnterprise.ts";
+import type { AgyEnterpriseQuotaObservations } from "@omniroute/open-sse/utils/agyEnterprise.ts";
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: "$",
@@ -142,7 +142,7 @@ interface Props {
   error: string | null;
   message?: string | null;
   billing?: ProviderBillingStatus | null;
-  quotaObservations?: EnterpriseQuotaObservations;
+  quotaObservations?: AgyEnterpriseQuotaObservations;
   refreshedAt?: string;
   hasStaleData: boolean;
   onRefresh: () => void;

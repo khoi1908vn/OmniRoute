@@ -26,12 +26,12 @@ export const BUILTIN_GEMINI_CLIENT = {
 /** Marker recorded at authorize time; the literal id guards client rotation. */
 export type GoogleOauthClientMarker = "builtin" | `custom:${string}` | undefined;
 
-export class EnterpriseOAuthReauthorizationError extends Error {
+export class AgyEnterpriseOAuthReauthorizationError extends Error {
   constructor() {
     super(
       "Enterprise issuing OAuth client is unavailable. Restore its client configuration or sign in again."
     );
-    this.name = "EnterpriseOAuthReauthorizationError";
+    this.name = "AgyEnterpriseOAuthReauthorizationError";
   }
 }
 
@@ -83,7 +83,7 @@ export function selectGoogleRefreshClient(
       clientSecret: configuredClient.clientSecret,
     };
   }
-  if (provider === "agy-enterprise") throw new EnterpriseOAuthReauthorizationError();
+  if (provider === "agy-enterprise") throw new AgyEnterpriseOAuthReauthorizationError();
   const builtin = builtinClientFor(provider);
   return { clientId: builtin.clientId, clientSecret: builtin.clientSecret };
 }

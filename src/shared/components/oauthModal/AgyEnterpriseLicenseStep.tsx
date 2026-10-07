@@ -11,9 +11,9 @@ type License = {
   tierDisplayName?: string;
   supported: boolean;
 };
-export type EnterpriseSetup = { setupId: string; expiresAt: number };
+export type AgyEnterpriseSetup = { setupId: string; expiresAt: number };
 
-export async function enterpriseSetupAction(
+export async function agyEnterpriseSetupAction(
   action: string,
   setupId: string,
   extra: Record<string, string> = {}
@@ -32,20 +32,23 @@ export async function enterpriseSetupAction(
   );
   const data = await response.json();
   if (!response.ok)
-    throw new Error(
-      typeof data.error === "string"
-        ? data.error
-        : "Enterprise setup failed. Retry or sign in again."
+    throw Object.assign(
+      new Error(
+        typeof data.error === "string"
+          ? data.error
+          : "Enterprise setup failed. Retry or sign in again."
+      ),
+      { status: response.status }
     );
   return data;
 }
 
-export default function EnterpriseLicenseStep({
+export default function AgyEnterpriseLicenseStep({
   setup,
   onSaved,
   onSignInAgain,
 }: {
-  setup: EnterpriseSetup;
+  setup: AgyEnterpriseSetup;
   onSaved: () => void;
   onSignInAgain: () => void;
 }) {
@@ -66,11 +69,12 @@ export default function EnterpriseLicenseStep({
     setBusy(true);
     setError("");
     try {
-      const data = await enterpriseSetupAction("licenses", setup.setupId);
+      const data = await agyEnterpriseSetupAction("licenses", setup.setupId);
       setEmail(data.email);
       acceptLicenses(data.licenses);
       if (data.discoveryError) setError(data.discoveryError);
     } catch (error) {
+      if (error instanceof Error && "status" in error && error.status === 410) setExpired(true);
       setError(error instanceof Error ? error.message : "License discovery failed");
     } finally {
       setBusy(false);
@@ -87,7 +91,7 @@ export default function EnterpriseLicenseStep({
     setBusy(true);
     setError("");
     try {
-      const data = await enterpriseSetupAction(
+      const data = await agyEnterpriseSetupAction(
         action,
         setup.setupId,
         action === "finalize" ? { licenseId: selected } : { projectId: project.trim(), location }
@@ -98,6 +102,7 @@ export default function EnterpriseLicenseStep({
         setSelected(data.verifiedLicenseId);
       }
     } catch (error) {
+      if (error instanceof Error && "status" in error && error.status === 410) setExpired(true);
       setError(error instanceof Error ? error.message : "Enterprise setup failed");
     } finally {
       setBusy(false);
@@ -127,7 +132,7 @@ export default function EnterpriseLicenseStep({
           <label key={license.licenseId} className="flex items-start gap-2">
             <input
               type="radio"
-              name="enterprise-license"
+              name="agy-enterprise-license"
               value={license.licenseId}
               checked={selected === license.licenseId}
               disabled={!license.supported}

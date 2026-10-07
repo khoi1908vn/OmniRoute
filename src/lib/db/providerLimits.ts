@@ -4,8 +4,8 @@ import {
 } from "@/shared/utils/providerBilling";
 import { getDbInstance, isBuildPhase, isCloud } from "./core";
 import {
-  enterpriseQuotaObservationsSchema,
-  type EnterpriseQuotaObservations,
+  agyEnterpriseQuotaObservationsSchema,
+  type AgyEnterpriseQuotaObservations,
 } from "@omniroute/open-sse/utils/agyEnterprise.ts";
 
 type JsonRecord = Record<string, unknown>;
@@ -35,7 +35,7 @@ export interface ProviderLimitsCacheEntry {
   source?: string | null;
   bankedResetCredits?: number;
   billing?: ProviderBillingStatus;
-  quotaObservations?: EnterpriseQuotaObservations;
+  quotaObservations?: AgyEnterpriseQuotaObservations;
 }
 
 const PROVIDER_LIMITS_CACHE_NAMESPACE = "providerLimitsCache";
@@ -69,7 +69,7 @@ function normalizeCacheEntry(value: unknown): ProviderLimitsCacheEntry | null {
   const bankedResetCredits = Number(record.bankedResetCredits);
   const billing = sanitizeProviderBillingStatus(record.billing);
   const modelQuotas = toRecord(record.modelQuotas);
-  const observations = enterpriseQuotaObservationsSchema.safeParse(record.quotaObservations);
+  const observations = agyEnterpriseQuotaObservationsSchema.safeParse(record.quotaObservations);
 
   return {
     quotas: toRecord(record.quotas),

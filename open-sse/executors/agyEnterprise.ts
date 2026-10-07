@@ -8,8 +8,8 @@ import {
 } from "./base.ts";
 import { PROVIDERS } from "../config/constants.ts";
 import { getAccessToken } from "../services/tokenRefresh.ts";
-import { enterpriseContextSchema } from "@omniroute/open-sse/utils/agyEnterprise.ts";
-import { enterpriseResource, enterpriseHeaders } from "../services/agyEnterprise.ts";
+import { agyEnterpriseContextSchema } from "@omniroute/open-sse/utils/agyEnterprise.ts";
+import { agyEnterpriseResource, agyEnterpriseHeaders } from "../services/agyEnterprise.ts";
 
 const part = z
   .object({
@@ -36,12 +36,12 @@ export class AgyEnterpriseExecutor extends BaseExecutor {
     _index = 0,
     credentials: ProviderCredentials | null = null
   ) {
-    return `${enterpriseResource(enterpriseContextSchema.parse(credentials?.providerSpecificData))}:streamGenerateContent?alt=sse`;
+    return `${agyEnterpriseResource(agyEnterpriseContextSchema.parse(credentials?.providerSpecificData))}:streamGenerateContent?alt=sse`;
   }
   buildHeaders(credentials: ProviderCredentials) {
     if (!credentials.accessToken) throw new Error("Enterprise OAuth access token required");
     return {
-      ...enterpriseHeaders(credentials.accessToken),
+      ...agyEnterpriseHeaders(credentials.accessToken),
       Accept: "text/event-stream",
       "X-Aicode-Request-Id": `checkpoint/${randomUUID()}`,
     };
@@ -56,7 +56,7 @@ export class AgyEnterpriseExecutor extends BaseExecutor {
     const source = body as Record<string, unknown>;
     if ((Array.isArray(source?.tools) && source.tools.length) || source?.toolConfig)
       throw new Error("Enterprise tool calling is not yet verified");
-    const context = enterpriseContextSchema.parse(credentials.providerSpecificData);
+    const context = agyEnterpriseContextSchema.parse(credentials.providerSpecificData);
     return {
       ...requestSchema.parse(body),
       aicode: { experience },
