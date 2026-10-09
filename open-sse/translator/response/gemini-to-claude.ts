@@ -206,7 +206,8 @@ export function geminiToClaudeResponse(chunk, state) {
     state,
     content?.parts || [],
     Boolean(candidate.finishReason),
-    candidate.finishReason
+    candidate.finishReason,
+    candidate.groundingMetadata || candidate.grounding_metadata
   );
 
   // ── Initialize: emit message_start ─────────────────────────────

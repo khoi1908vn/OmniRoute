@@ -136,8 +136,14 @@ function applyCandidateContentParts(
 ): void {
   const content = candidate?.content as Record<string, unknown> | undefined;
   const parts = content?.parts;
+  captureAgyEnterpriseReplayParts(
+    acc.replay,
+    Array.isArray(parts) ? parts : [],
+    false,
+    undefined,
+    candidate?.groundingMetadata || candidate?.grounding_metadata
+  );
   if (!Array.isArray(parts)) return;
-  captureAgyEnterpriseReplayParts(acc.replay, parts, false);
   for (const part of parts) {
     applyCandidatePart(part as Record<string, unknown>, acc);
   }

@@ -40,6 +40,80 @@ const toolHistory = (args = call.args, name = call.name) => ({
 });
 test.after(() => resetDbInstance());
 
+test("Teammate fallback rejects malformed persisted lifetimes", () => {
+  for (const expiry of [undefined, null, "expired", -1]) {
+    store.clearGeminiThoughtSignatures();
+    store.storeAgyEnterpriseTextSignature(namespace, "Lifetime report.", "c2ln", teammateOrigin);
+    const db = getDbInstance();
+    const row = db
+      .prepare("SELECT key, value FROM key_value WHERE namespace = ?")
+      .get("gemini_thought_signatures") as { key: string; value: string };
+    db.prepare("UPDATE key_value SET value = ? WHERE namespace = ? AND key = ?").run(
+      JSON.stringify({ ...JSON.parse(row.value), expiresAt: expiry }),
+      "gemini_thought_signatures",
+      row.key
+    );
+    store.clearGeminiThoughtSignatureMemoryForTests();
+    assert.equal(
+      store.getAgyEnterpriseTextReplay(namespace, "Lifetime report.", [], teammateRebuilt),
+      null
+    );
+  }
+});
+
+test("Teammate fallback cannot strip captured calls, media, or grounding", () => {
+  for (const translateResponse of [geminiToClaudeResponse, geminiToOpenAIResponse]) {
+    for (const extra of [
+      signed,
+      { inlineData: { mimeType: "image/png", data: "AA==" } },
+      { fileData: { fileUri: "synthetic" } },
+      null,
+    ]) {
+      for (const signature of ["c2ln", undefined]) {
+        store.clearGeminiThoughtSignatures();
+        const text = "Bound report.";
+        const candidate = {
+          content: {
+            parts: [
+              { text, ...(signature ? { thoughtSignature: signature } : {}) },
+              ...(extra ? [extra] : []),
+            ],
+          },
+          finishReason: "STOP",
+          ...(!extra ? { groundingMetadata: { webSearchQueries: ["synthetic query"] } } : {}),
+        };
+        translateResponse(
+          { candidates: [candidate] },
+          { ...state(), enterpriseReplayHistory: teammateOrigin }
+        );
+        assert.equal(
+          store.getAgyEnterpriseTextReplay(namespace, text, [], teammateRebuilt),
+          null,
+          JSON.stringify(extra)
+        );
+        for (const translate of [claudeToGeminiRequest, openaiToGeminiRequest]) {
+          assert.throws(
+            () =>
+              translate(
+                model,
+                {
+                  messages: [
+                    { role: "user", content: "hello" },
+                    { role: "user", content: teammateRebuilt[1].parts[0].text },
+                    { role: "assistant", content: text },
+                  ],
+                },
+                false,
+                credentials
+              ),
+            /replay/
+          );
+        }
+      }
+    }
+  }
+});
+
 test("Instruction removal preserves uniquely scoped old call origins", () => {
   store.clearGeminiThoughtSignatures();
   const oldHistory = [...history, { role: "user", parts: [{ text: "Harness context only." }] }];

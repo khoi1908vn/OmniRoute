@@ -37,6 +37,57 @@ type Completion = {
 };
 test.after(() => resetDbInstance());
 
+test("Malformed streaming data followed by STOP never grants text replay", async () => {
+  const history = [{ role: "user", parts: [{ text: "Read only." }] }];
+  const rebuilt = [
+    {
+      role: "user",
+      parts: [{ text: '<teammate-message teammate_id="reader">Done</teammate-message>' }],
+    },
+  ];
+  for (const format of ["claude", "openai"]) {
+    for (const middle of ["data: {malformed\n\n", ": heartbeat\n\nevent: message\n\n"]) {
+      clearGeminiThoughtSignatures();
+      const payload =
+        'data: {"candidates":[{"content":{"parts":[{"text":"Complete report."}]}}]}\n\n' +
+        middle +
+        'data: {"candidates":[{"content":{"parts":[]},"finishReason":"STOP"}]}\n\n';
+      const source = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(payload));
+          controller.close();
+        },
+      });
+      await new Response(
+        source.pipeThrough(
+          createSSEStream({
+            sourceFormat: format,
+            targetFormat: "gemini",
+            provider: "agy-enterprise",
+            model,
+            connectionId: context.connectionId,
+            body: { contents: history },
+          })
+        )
+      ).text();
+      const expected = middle.includes("malformed") ? null : {};
+      const namespace = buildAgyEnterpriseReplayNamespace(context.connectionId, model);
+      assert.deepEqual(
+        getAgyEnterpriseTextReplay(namespace, "Complete report.", [], rebuilt),
+        expected,
+        format
+      );
+      clearGeminiThoughtSignatures();
+      const buffered = parseSSEToGeminiResponse(payload, model, { ...context, history });
+      assert.equal(Boolean(buffered), !middle.includes("malformed"));
+      assert.deepEqual(
+        getAgyEnterpriseTextReplay(namespace, "Complete report.", [], rebuilt),
+        expected
+      );
+    }
+  }
+});
+
 test("Only completed plain-text STOP origins recover after teammate wakeup", () => {
   clearGeminiThoughtSignatures();
   const experience = "gemini-3.1-pro-high";

@@ -516,9 +516,25 @@ export function getAgyEnterpriseTextReplay(
       if (readEnterpriseRow(key)) return null;
       const origins = findEnterpriseTextOrigins(namespace, text);
       if (origins.length !== 1) return null;
-      const origin = parsePersistedEntry(origins[0].value);
-      if (!origin || origin.entry.signature === AMBIGUOUS_TEXT) return null;
-      const record = enterpriseTextOriginSchema.safeParse(JSON.parse(origin.entry.signature));
+      // Legacy exact-history records may omit timestamps; new fallback origins may not.
+      const origin = z
+        .object({
+          signature: z.string().min(1),
+          createdAt: z.number().finite().nonnegative(),
+          expiresAt: z.number().finite().nonnegative(),
+        })
+        .strict()
+        .safeParse(JSON.parse(origins[0].value));
+      const now = Date.now();
+      if (
+        !origin.success ||
+        origin.data.createdAt > now ||
+        origin.data.expiresAt <= now ||
+        origin.data.expiresAt <= origin.data.createdAt ||
+        origin.data.signature === AMBIGUOUS_TEXT
+      )
+        return null;
+      const record = enterpriseTextOriginSchema.safeParse(JSON.parse(origin.data.signature));
       const contents = Array.isArray(history) ? history : [];
       if (
         !record.success ||
@@ -793,6 +809,8 @@ export type AgyEnterpriseReplayState = {
   enterpriseSignedText?: string;
   enterpriseHasCall?: boolean;
   enterpriseNonTextPart?: boolean;
+  enterpriseStandaloneUnsupported?: boolean;
+  enterpriseReplayInvalid?: boolean;
   enterpriseFinishReason?: unknown;
   enterpriseTextAfterCall?: boolean;
   enterpriseThoughtAfterText?: boolean;
@@ -810,9 +828,11 @@ export function captureAgyEnterpriseReplayParts(
   state: AgyEnterpriseReplayState,
   parts: Array<Record<string, unknown>>,
   terminal: boolean,
-  finishReason?: unknown
+  finishReason?: unknown,
+  grounding?: unknown
 ): void {
   if (state.provider !== "agy-enterprise" || !state.signatureNamespace) return;
+  state.enterpriseStandaloneUnsupported ||= Boolean(grounding);
   for (const part of parts) {
     const thoughtTextOnly =
       part.thought === true &&
@@ -823,6 +843,12 @@ export function captureAgyEnterpriseReplayParts(
       (typeof part.text !== "string" || Object.keys(part).some((key) => key !== "text"))
     )
       state.enterpriseNonTextPart = true;
+    if (
+      !thoughtTextOnly &&
+      (typeof part.text !== "string" ||
+        Object.keys(part).some((key) => !["text", "thoughtSignature"].includes(key)))
+    )
+      state.enterpriseStandaloneUnsupported = true;
     if (part.thought === true && state.enterpriseVisibleText)
       state.enterpriseThoughtAfterText = true;
     if (part.functionCall) {
@@ -851,14 +877,15 @@ export function captureAgyEnterpriseReplayParts(
       }
     }
   }
-  if (!terminal) return;
+  if (!terminal || state.enterpriseReplayInvalid) return;
   // STOP text can be unsigned. Retain earlier context so a teammate wakeup can
   // rebuild the final user turn without inventing a signature.
   if (
     finishReason === "STOP" &&
     state.enterpriseVisibleText &&
     !state.enterpriseHasCall &&
-    !state.enterpriseNonTextPart
+    !state.enterpriseNonTextPart &&
+    !state.enterpriseStandaloneUnsupported
   )
     storeEnterpriseSignature(
       enterpriseReplayKey(
@@ -881,13 +908,25 @@ export function captureAgyEnterpriseReplayParts(
     state.enterpriseVisibleText &&
     state.enterpriseTextSignature &&
     state.enterpriseSignedText === state.enterpriseVisibleText
-  )
-    storeAgyEnterpriseTextSignature(
-      state.signatureNamespace,
-      state.enterpriseVisibleText,
-      state.enterpriseTextSignature,
-      state.enterpriseReplayHistory
-    );
+  ) {
+    if (state.enterpriseStandaloneUnsupported)
+      storeEnterpriseSignature(
+        enterpriseReplayKey(
+          state.signatureNamespace,
+          "text",
+          state.enterpriseVisibleText,
+          state.enterpriseReplayHistory
+        ),
+        state.enterpriseTextSignature
+      );
+    else
+      storeAgyEnterpriseTextSignature(
+        state.signatureNamespace,
+        state.enterpriseVisibleText,
+        state.enterpriseTextSignature,
+        state.enterpriseReplayHistory
+      );
+  }
   if (
     state.enterpriseVisibleText &&
     !state.enterpriseTextSignature &&
@@ -938,7 +977,12 @@ export function captureAgyEnterpriseGroundedReplay(
   searchText: string,
   terminal: boolean
 ): void {
-  if (state.provider !== "agy-enterprise" || !state.signatureNamespace) return;
+  if (
+    state.provider !== "agy-enterprise" ||
+    !state.signatureNamespace ||
+    state.enterpriseReplayInvalid
+  )
+    return;
   state.enterpriseRenderedText = (state.enterpriseRenderedText || "") + searchText;
   state.enterpriseHasGroundingText ||= Boolean(searchText);
   if (

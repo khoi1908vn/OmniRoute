@@ -218,6 +218,7 @@ type TranslateState = ReturnType<typeof initState> & {
   provider?: string | null;
   toolNameMap?: unknown;
   signatureNamespace?: string | null;
+  enterpriseReplayInvalid?: boolean;
   usage?: unknown;
   finishReason?: unknown;
   copilotCompatibleReasoning?: boolean;
@@ -2295,7 +2296,11 @@ export function createSSEStream(options: StreamOptions = {}) {
           }
 
           const parsed = parseSSELine(trimmed);
-          if (!parsed) continue;
+          if (!parsed) {
+            if (state?.provider === "agy-enterprise" && /^data:\s*\S/.test(trimmed))
+              state.enterpriseReplayInvalid = true;
+            continue;
+          }
 
           if (upstreamErrorForwarded) continue;
 
@@ -2932,6 +2937,12 @@ export function createSSEStream(options: StreamOptions = {}) {
           // Translate mode: process remaining buffer
           if (buffer.trim()) {
             const parsed = parseSSELine(buffer.trim());
+            if (
+              !parsed &&
+              state?.provider === "agy-enterprise" &&
+              /^data:\s*\S/.test(buffer.trim())
+            )
+              state.enterpriseReplayInvalid = true;
             if (parsed && !parsed.done) {
               if (emitTranslatedFailureAndAbort(controller, parsed)) return;
               providerPayloadCollector.push(parsed);
