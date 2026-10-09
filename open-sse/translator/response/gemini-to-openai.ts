@@ -400,7 +400,12 @@ export function geminiToOpenAIResponse(chunk, state) {
   }
 
   const content = candidate.content;
-  captureAgyEnterpriseReplayParts(state, content?.parts || [], Boolean(candidate.finishReason));
+  captureAgyEnterpriseReplayParts(
+    state,
+    content?.parts || [],
+    Boolean(candidate.finishReason),
+    candidate.finishReason
+  );
 
   // Initialize state
   if (!state.messageId) {

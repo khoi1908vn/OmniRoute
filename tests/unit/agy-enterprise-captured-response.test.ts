@@ -8,9 +8,15 @@ import {
   buildAgyEnterpriseReplayNamespace,
   getAgyEnterpriseCallSignature,
   getAgyEnterpriseTextSignature,
+  getAgyEnterpriseTextReplay,
+  captureAgyEnterpriseReplayParts,
   clearGeminiThoughtSignatures,
 } from "../../open-sse/services/geminiThoughtSignatureStore.ts";
 import { resetDbInstance } from "../../src/lib/db/core.ts";
+import { createSSEStream } from "../../open-sse/utils/stream.ts";
+import { claudeToGeminiRequest } from "../../open-sse/translator/request/claude-to-gemini.ts";
+import { openaiToGeminiRequest } from "../../open-sse/translator/request/openai-to-gemini.ts";
+import { geminiToOpenAIResponse } from "../../open-sse/translator/response/gemini-to-openai.ts";
 
 const model = "gemini-3.8-flash-high";
 const context = { provider: "agy-enterprise", connectionId: "buffer-account", experience: model };
@@ -30,6 +36,191 @@ type Completion = {
   usage: Record<string, unknown>;
 };
 test.after(() => resetDbInstance());
+
+test("Only completed plain-text STOP origins recover after teammate wakeup", () => {
+  clearGeminiThoughtSignatures();
+  const experience = "gemini-3.1-pro-high";
+  const connectionId = "unsigned-origin";
+  const namespace = buildAgyEnterpriseReplayNamespace(connectionId, experience);
+  const history = [
+    { role: "user", parts: [{ text: "Earlier request." }] },
+    { role: "user", parts: [{ text: "Read-only team." }] },
+  ];
+  const rebuilt = [
+    history[0],
+    {
+      role: "user",
+      parts: [{ text: '<teammate-message teammate_id="reader">Report</teammate-message>' }],
+    },
+  ];
+  const state = () => ({
+    provider: "agy-enterprise",
+    signatureNamespace: namespace,
+    enterpriseReplayHistory: history,
+  });
+  for (const finish of [undefined, "MAX_TOKENS", "SAFETY", "OTHER"]) {
+    const capture = state();
+    captureAgyEnterpriseReplayParts(capture, [{ text: "Incomplete." }], false);
+    captureAgyEnterpriseReplayParts(capture, [], true, finish);
+    assert.equal(getAgyEnterpriseTextReplay(namespace, "Incomplete.", [], history), null);
+    assert.equal(getAgyEnterpriseTextReplay(namespace, "Incomplete.", [], rebuilt), null);
+  }
+  const mixedThought = state();
+  captureAgyEnterpriseReplayParts(
+    mixedThought,
+    [
+      { thought: true, text: "Reasoning one.", thoughtSignature: "native-thought-signature" },
+      { thought: true, text: "Reasoning two." },
+      { text: "Visible answer." },
+    ],
+    false
+  );
+  captureAgyEnterpriseReplayParts(mixedThought, [], true, "STOP");
+  assert.deepEqual(getAgyEnterpriseTextReplay(namespace, "Visible answer.", [], history), {});
+
+  for (const extra of [
+    { functionCall: { name: "read", args: {}, id: "unsigned-call" } },
+    { inlineData: {} },
+  ]) {
+    const capture = state();
+    captureAgyEnterpriseReplayParts(capture, [extra], false);
+    captureAgyEnterpriseReplayParts(capture, [{ text: "Unsupported." }], true, "STOP");
+    assert.equal(getAgyEnterpriseTextReplay(namespace, "Unsupported.", [], history), null);
+    assert.equal(getAgyEnterpriseTextReplay(namespace, "Unsupported.", [], rebuilt), null);
+  }
+  const capture = state();
+  captureAgyEnterpriseReplayParts(capture, [{ text: "Complete." }], false);
+  assert.equal(getAgyEnterpriseTextReplay(namespace, "Complete.", [], history), null);
+  assert.equal(getAgyEnterpriseTextReplay(namespace, "Complete.", [], rebuilt), null);
+  captureAgyEnterpriseReplayParts(capture, [{ text: "" }], true, "STOP");
+  assert.deepEqual(getAgyEnterpriseTextReplay(namespace, "Complete.", [], history), {});
+  assert.deepEqual(getAgyEnterpriseTextReplay(namespace, "Complete.", [], rebuilt), {});
+  for (const [scope, text, origin] of [
+    [buildAgyEnterpriseReplayNamespace("other", experience), "Complete.", history],
+    [buildAgyEnterpriseReplayNamespace(connectionId, "gemini-3.1-pro-low"), "Complete.", history],
+    [namespace, "Complete. altered", history],
+    [namespace, "Complete.", []],
+  ] as const)
+    assert.equal(getAgyEnterpriseTextReplay(scope, text, [], origin), null);
+  assert.equal(
+    getAgyEnterpriseTextReplay(
+      namespace,
+      "Complete.",
+      [{ name: "read", args: {}, id: "injected-call" }],
+      history
+    ),
+    null
+  );
+});
+
+test("Unsigned STOP capture reaches OpenAI translation and buffered SSE replay", () => {
+  clearGeminiThoughtSignatures();
+  const experience = "gemini-3.1-pro-high";
+  const connectionId = "unsigned-other-paths";
+  const history = [{ role: "user", parts: [{ text: "Read-only team." }] }];
+  const namespace = buildAgyEnterpriseReplayNamespace(connectionId, experience);
+  const event = {
+    candidates: [{ content: { parts: [{ text: "Complete." }] }, finishReason: "STOP" }],
+  };
+  geminiToOpenAIResponse(event, {
+    provider: "agy-enterprise",
+    signatureNamespace: namespace,
+    enterpriseReplayHistory: history,
+    toolCalls: new Map(),
+  });
+  const body = {
+    messages: [
+      { role: "user", content: "Read-only team." },
+      { role: "assistant", content: "Complete." },
+    ],
+  };
+  const credentials = { _provider: "agy-enterprise", _signatureNamespace: connectionId };
+  assert.deepEqual(openaiToGeminiRequest(experience, body, false, credentials).contents[1].parts, [
+    { text: "Complete." },
+  ]);
+  clearGeminiThoughtSignatures();
+  assert.ok(
+    parseSSEToGeminiResponse(`data: ${JSON.stringify(event)}\n\n`, experience, {
+      provider: "agy-enterprise",
+      connectionId,
+      experience,
+      history,
+    })
+  );
+  assert.deepEqual(getAgyEnterpriseTextReplay(namespace, "Complete.", [], history), {});
+});
+
+test("Captured teammate summary ending unsigned STOP must remain replayable", async () => {
+  clearGeminiThoughtSignatures();
+  const fixture = JSON.parse(
+    readFileSync(
+      new URL(
+        "../fixtures/agy-enterprise/captured-protocol/teammate-unsigned-stop.json",
+        import.meta.url
+      ),
+      "utf8"
+    )
+  ) as { chunks: string[] };
+  const nativeParts = fixture.chunks.flatMap(
+    (chunk) => JSON.parse(chunk.slice(6)).candidates[0].content.parts
+  );
+  const text = nativeParts.map((part: { text: string }) => part.text).join("");
+  assert.equal(text.length, 2149);
+  assert.equal(fixture.chunks.length, 21);
+  assert.equal(JSON.parse(fixture.chunks.at(-1).slice(6)).candidates[0].finishReason, "STOP");
+  assert.ok(
+    nativeParts.every(
+      (part: Record<string, unknown>) =>
+        Object.keys(part).length === 1 && typeof part.text === "string"
+    )
+  );
+  const incidentModel = "gemini-3.1-pro-high";
+  const connectionId = "unsigned-teammate-capture";
+  const history = [{ role: "user", parts: [{ text: "Read-only teammate result." }] }];
+  let index = 0;
+  const source = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (index === fixture.chunks.length) controller.close();
+      else controller.enqueue(new TextEncoder().encode(fixture.chunks[index++]));
+    },
+  });
+  const client = await new Response(
+    source.pipeThrough(
+      createSSEStream({
+        sourceFormat: "claude",
+        targetFormat: "gemini",
+        provider: "agy-enterprise",
+        model: incidentModel,
+        connectionId,
+        body: { contents: history },
+      })
+    )
+  ).text();
+  assert.match(client, /message_stop/);
+  const emittedText = client
+    .split("\n")
+    .filter((line) => line.startsWith("data: "))
+    .map((line) => JSON.parse(line.slice(6)))
+    .filter((event) => event.delta?.type === "text_delta")
+    .map((event) => event.delta.text)
+    .join("");
+  assert.equal(emittedText, text);
+  // Native continuation of these captured unsigned parts returned HTTP 200 in
+  // the live protocol control. The proxy must preserve their observed origin.
+  const replayed = claudeToGeminiRequest(
+    incidentModel,
+    {
+      messages: [
+        { role: "user", content: "Read-only teammate result." },
+        { role: "assistant", content: text },
+        { role: "user", content: "Teammate idle notification." },
+      ],
+    },
+    true,
+    { _provider: "agy-enterprise", _signatureNamespace: connectionId }
+  );
+  assert.deepEqual(replayed.contents[1].parts, [{ text }]);
+});
 
 test("enterpriseBufferedMatchesCapturedStream", () => {
   for (const flow of [33, 35, 43]) {

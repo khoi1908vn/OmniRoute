@@ -150,6 +150,7 @@ function applyFinishReason(
 ): void {
   if (!candidate?.finishReason) return;
   acc.sawTerminal = true;
+  acc.replay.enterpriseFinishReason = candidate.finishReason;
   acc.finishReason = normalizeOpenAICompatibleFinishReasonString(
     String(candidate.finishReason).toLowerCase()
   );
@@ -308,7 +309,7 @@ export function parseSSEToGeminiResponse(
   if (!acc.sawContent && !acc.sawTerminal && !acc.usage && acc.toolCalls.length === 0) return null;
   if (context.provider === "agy-enterprise") {
     if (acc.invalid || !acc.sawTerminal) return null;
-    captureAgyEnterpriseReplayParts(acc.replay, [], true);
+    captureAgyEnterpriseReplayParts(acc.replay, [], true, acc.replay.enterpriseFinishReason);
     captureAgyEnterpriseGroundedReplay(acc.replay, "", true);
   }
 

@@ -306,6 +306,81 @@ test("Teammate context origins survive memory and database reopening", () => {
   );
 });
 
+test("Claude and OpenAI teammate replay preserve native standalone parts", () => {
+  store.clearGeminiThoughtSignatures();
+  const text = "The exploration is complete.";
+  const unsignedText = "The team report is complete.";
+  store.storeAgyEnterpriseTextSignature(namespace, text, "dGV4dA==", teammateOrigin);
+  store.captureAgyEnterpriseReplayParts(
+    { ...state(), enterpriseReplayHistory: teammateOrigin },
+    [{ text: unsignedText }],
+    true,
+    "STOP"
+  );
+  for (const translate of [claudeToGeminiRequest, openaiToGeminiRequest]) {
+    for (const [reply, parts] of [
+      [text, [{ text, thoughtSignature: "dGV4dA==" }]],
+      [unsignedText, [{ text: unsignedText }]],
+    ] as const) {
+      const body = {
+        messages: [
+          { role: "user", content: "hello" },
+          { role: "user", content: teammateRebuilt[1].parts[0].text },
+          { role: "assistant", content: reply },
+        ],
+      };
+      const result = translate(model, body, false, credentials);
+      assert.deepEqual(result.contents.at(-1)?.parts, parts);
+      body.messages[0].content = "changed earlier prompt";
+      assert.throws(() => translate(model, body, false, credentials), /replay/);
+    }
+  }
+});
+
+test("Diagnostic flags never bypass Enterprise replay rejection", () => {
+  store.clearGeminiThoughtSignatures();
+  const previous = process.env.OMNIROUTE_ENTERPRISE_REPLAY_DIAGNOSTIC_CONTINUE;
+  process.env.OMNIROUTE_ENTERPRISE_REPLAY_DIAGNOSTIC_CONTINUE = "true";
+  try {
+    for (const translate of [claudeToGeminiRequest, openaiToGeminiRequest]) {
+      assert.throws(
+        () =>
+          translate(
+            model,
+            {
+              messages: [
+                { role: "user", content: "hello" },
+                { role: "assistant", content: "Unrecorded answer." },
+              ],
+            },
+            false,
+            credentials
+          ),
+        /Enterprise replay rejected/
+      );
+      const tools =
+        translate === claudeToGeminiRequest
+          ? {
+              messages: [
+                { role: "user", content: "hello" },
+                {
+                  role: "assistant",
+                  content: [{ type: "tool_use", id: call.id, name: call.name, input: call.args }],
+                },
+              ],
+            }
+          : toolHistory();
+      assert.throws(
+        () => translate(model, tools, false, credentials),
+        /Enterprise replay rejected/
+      );
+    }
+  } finally {
+    if (previous === undefined) delete process.env.OMNIROUTE_ENTERPRISE_REPLAY_DIAGNOSTIC_CONTINUE;
+    else process.env.OMNIROUTE_ENTERPRISE_REPLAY_DIAGNOSTIC_CONTINUE = previous;
+  }
+});
+
 test("Resumed teammates replay immutable call groups after their hook prefix is rebuilt", () => {
   store.clearGeminiThoughtSignatures();
   const originalHistory = [

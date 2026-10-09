@@ -202,7 +202,12 @@ export function geminiToClaudeResponse(chunk, state) {
   const results = [];
   const candidate = response.candidates[0];
   const content = candidate.content;
-  captureAgyEnterpriseReplayParts(state, content?.parts || [], Boolean(candidate.finishReason));
+  captureAgyEnterpriseReplayParts(
+    state,
+    content?.parts || [],
+    Boolean(candidate.finishReason),
+    candidate.finishReason
+  );
 
   // ── Initialize: emit message_start ─────────────────────────────
   if (!state.messageId) {
