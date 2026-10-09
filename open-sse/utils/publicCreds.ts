@@ -125,6 +125,16 @@ export function decodePublicCredBytes(bytes: readonly number[]): string {
  * Or use the helper below `embeddedBytesFor()`.
  */
 const EMBEDDED_DEFAULTS = {
+  // AGY CLI 1.2.16 — hosted callback client, verified in the public Windows binary.
+  agy_enterprise_id: [
+    87, 85, 90, 90, 71, 91, 76, 69, 92, 29, 69, 71, 79, 95, 95, 23, 95, 21, 0, 5, 7, 12, 90, 6, 8,
+    0, 29, 4, 78, 67, 71, 13, 26, 95, 0, 66, 18, 3, 89, 85, 13, 92, 16, 3, 29, 90, 4, 93, 0, 6, 76,
+    11, 6, 12, 74, 26, 84, 26, 30, 11, 27, 17, 0, 27, 0, 0, 67, 4, 91, 1, 3, 4,
+  ],
+  agy_enterprise_alt: [
+    40, 34, 45, 58, 34, 55, 88, 77, 60, 124, 39, 5, 36, 91, 59, 52, 105, 53, 1, 62, 57, 10, 3, 95,
+    54, 13, 63, 40, 90, 34, 69, 56, 24, 26, 59,
+  ],
   // Gemini / Code Assist — google oauth client (public, PKCE)
   gemini_id: [
     89, 85, 95, 91, 71, 90, 77, 68, 92, 30, 73, 64, 79, 3, 6, 91, 75, 2, 3, 0, 29, 28, 13, 0, 1, 5,

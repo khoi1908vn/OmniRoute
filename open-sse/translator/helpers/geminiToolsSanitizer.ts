@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 
 import { cleanJSONSchemaForAntigravity } from "./geminiHelper.ts";
+import { agyEnterpriseWebSearchSchema } from "../../utils/agyEnterprise.ts";
 
 type GeminiFunctionDeclaration = {
   name: string;
@@ -11,11 +12,13 @@ type GeminiFunctionDeclaration = {
 type GeminiTool = {
   functionDeclarations?: GeminiFunctionDeclaration[];
   googleSearch?: Record<string, unknown>;
+  enterpriseWebSearch?: Record<string, unknown>;
 };
 
 type GeminiToolSanitizationOptions = {
   stripNamespace?: boolean;
   toolNameMap?: Map<string, string> | null;
+  agyEnterprise?: boolean;
 };
 
 const MAX_GEMINI_TOOL_NAME_LENGTH = 64;
@@ -149,6 +152,79 @@ export function sanitizeGeminiToolName(
   return sanitizedName;
 }
 
+function toEnterpriseSearchTool(tool: Record<string, unknown>): GeminiTool | null {
+  const fn = isRecord(tool.function) ? tool.function : null;
+  const name = fn?.name ?? tool.name;
+  const type = typeof tool.type === "string" ? tool.type : "";
+  const isSearch =
+    "enterpriseWebSearch" in tool ||
+    "googleSearch" in tool ||
+    "google_search" in tool ||
+    /^(?:web_search(?:_preview)?(?:_\d{8})?|googleSearch|google_search)$/.test(type) ||
+    name === "WebSearch" ||
+    (tool.type === "function" && (name === "googleSearch" || name === "google_search"));
+  if (!isSearch) return null;
+
+  const unsupported = [
+    "allowed_domains",
+    "max_uses",
+    "user_location",
+    "filters",
+    "search_context_size",
+    "external_web_access",
+  ];
+  if (unsupported.some((field) => tool[field] !== undefined)) {
+    throw Object.assign(
+      new Error(
+        "Enterprise native search does not support allowlists, search limits or localization"
+      ),
+      {
+        statusCode: 400,
+        errorType: "invalid_request_error",
+      }
+    );
+  }
+  // Dynamic filtering would require Claude's code execution, not native Gemini search.
+  if (
+    tool.allowed_callers !== undefined &&
+    (!Array.isArray(tool.allowed_callers) ||
+      tool.allowed_callers.length !== 1 ||
+      tool.allowed_callers[0] !== "direct")
+  ) {
+    throw Object.assign(new Error("Enterprise native search supports only direct callers"), {
+      statusCode: 400,
+      errorType: "invalid_request_error",
+    });
+  }
+  const native =
+    "enterpriseWebSearch" in tool
+      ? tool.enterpriseWebSearch
+      : "googleSearch" in tool
+        ? tool.googleSearch
+        : "google_search" in tool
+          ? tool.google_search
+          : {};
+  const parsed = agyEnterpriseWebSearchSchema.safeParse(native);
+  const blocked = agyEnterpriseWebSearchSchema.safeParse(
+    tool.blocked_domains !== undefined ? { excludeDomains: tool.blocked_domains } : {}
+  );
+  if (!parsed.success || !blocked.success) {
+    throw Object.assign(
+      new Error(
+        "Invalid Enterprise native search options: only hostname excludeDomains are supported"
+      ),
+      {
+        statusCode: 400,
+        errorType: "invalid_request_error",
+      }
+    );
+  }
+  const excludeDomains = [
+    ...new Set([...(parsed.data.excludeDomains || []), ...(blocked.data.excludeDomains || [])]),
+  ];
+  return { enterpriseWebSearch: excludeDomains.length ? { excludeDomains } : {} };
+}
+
 function toGeminiGoogleSearchTool(tool: Record<string, unknown>): GeminiTool | null {
   if (isRecord(tool.googleSearch)) {
     return { googleSearch: tool.googleSearch };
@@ -197,10 +273,21 @@ export function buildGeminiTools(
       continue;
     }
 
-    const normalizedGoogleSearchTool = toGeminiGoogleSearchTool(rawTool);
+    const normalizedGoogleSearchTool = options.agyEnterprise
+      ? toEnterpriseSearchTool(rawTool)
+      : toGeminiGoogleSearchTool(rawTool);
     if (normalizedGoogleSearchTool) {
-      googleSearchTool = normalizedGoogleSearchTool;
-      continue;
+      if (options.agyEnterprise && googleSearchTool) {
+        const previous = googleSearchTool.enterpriseWebSearch?.excludeDomains as
+          string[] | undefined;
+        const current = normalizedGoogleSearchTool.enterpriseWebSearch?.excludeDomains as
+          string[] | undefined;
+        const excludeDomains = [...new Set([...(previous || []), ...(current || [])])];
+        googleSearchTool = { enterpriseWebSearch: excludeDomains.length ? { excludeDomains } : {} };
+      } else {
+        googleSearchTool = normalizedGoogleSearchTool;
+      }
+      if (!options.agyEnterprise || !Array.isArray(rawTool.functionDeclarations)) continue;
     }
 
     if (Array.isArray(rawTool.functionDeclarations)) {
@@ -255,7 +342,8 @@ export function buildGeminiTools(
   const result: GeminiTool[] = [];
 
   if (googleSearchTool) {
-    return [googleSearchTool];
+    if (!options.agyEnterprise) return [googleSearchTool];
+    result.push(googleSearchTool);
   }
 
   if (functionDeclarations.length > 0) {

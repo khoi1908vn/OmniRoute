@@ -4,6 +4,10 @@ import { ANTIGRAVITY_DEFAULT_SYSTEM } from "../../config/constants.ts";
 import {
   buildGeminiThoughtSignatureKey,
   resolveGeminiThoughtSignature,
+  buildAgyEnterpriseReplayNamespace,
+  getAgyEnterpriseTextReplay,
+  resolveAgyEnterpriseCallReplay,
+  describeAgyEnterpriseReplayFailure,
 } from "../../services/geminiThoughtSignatureStore.ts";
 import {
   generateAntigravityRequestId,
@@ -43,6 +47,11 @@ import {
   type GeminiContent,
   mergeConsecutiveSameRoleContents,
   ensureHistoryDoesNotOpenWithFunctionCall,
+  normalizeAgyEnterpriseContents,
+  assertAgyEnterpriseToolChoice,
+  missingAgyEnterpriseReplay,
+  assertAgyEnterpriseClientMedia,
+  agyEnterpriseHistorySnapshot,
 } from "./openai-to-gemini/helpers.ts";
 
 export {
@@ -88,11 +97,20 @@ type GeminiRequest = {
   tools?: Array<{
     functionDeclarations?: GeminiFunctionDeclaration[];
     googleSearch?: Record<string, unknown>;
+    enterpriseWebSearch?: Record<string, unknown>;
   }>;
   toolConfig?: { functionCallingConfig: GeminiFunctionCallingConfig };
   cachedContent?: string;
   _toolNameMap?: Map<string, string>;
 };
+
+function parseEnterpriseArguments(value: string | undefined): unknown {
+  try {
+    return JSON.parse(value || "{}");
+  } catch {
+    return missingAgyEnterpriseReplay();
+  }
+}
 
 // Convert OpenAI tool_choice into Gemini's functionCallingConfig mode. Mirrors
 // convertOpenAIToolChoice in openai-to-claude.ts (same enum shapes from the client).
@@ -154,6 +172,7 @@ type CloudCodeEnvelope = {
 };
 
 type GeminiToolNameOptions = {
+  agyEnterprise?: boolean;
   stripNamespace?: boolean;
   signatureNamespace?: string | null;
   signaturelessToolCallMode?: "native" | "text" | "context";
@@ -201,7 +220,9 @@ function openaiToGeminiBase(
     model: model,
     contents: [],
     generationConfig: {},
-    safetySettings: body.safetySettings || DEFAULT_SAFETY_SETTINGS,
+    ...(toolNameOptions.agyEnterprise
+      ? {}
+      : { safetySettings: body.safetySettings || DEFAULT_SAFETY_SETTINGS }),
   };
   // Gemini 3.x: an explicit thinkingLevel (from an operator payload override
   // targeting generationConfig.thinkingConfig.thinkingLevel, or supplied
@@ -319,7 +340,7 @@ function openaiToGeminiBase(
   // "reasoning_effort: none" off-switch above (#6813) is the supported opt-out.
   // Gemini 3.x: with an explicit thinkingLevel, only includeThoughts is injected —
   // the deprecated numeric budget is omitted entirely.
-  if (!result.generationConfig.thinkingConfig) {
+  if (!toolNameOptions.agyEnterprise && !result.generationConfig.thinkingConfig) {
     const modelLower = model.toLowerCase();
     if (
       modelLower.includes("gemini") &&
@@ -412,7 +433,7 @@ function openaiToGeminiBase(
       const role = msg.role;
       const content = msg.content;
 
-      if (role === "system" && messages.length > 1) {
+      if (role === "system" && (toolNameOptions.agyEnterprise || messages.length > 1)) {
         const systemText = typeof content === "string" ? content : extractTextContent(content);
         if (systemText) {
           if (!result.systemInstruction) {
@@ -443,7 +464,36 @@ function openaiToGeminiBase(
         if (content) {
           const text = typeof content === "string" ? content : extractTextContent(content);
           if (text) {
-            parts.push({ text });
+            const replay = toolNameOptions.agyEnterprise
+              ? getAgyEnterpriseTextReplay(
+                  toolNameOptions.signatureNamespace,
+                  text,
+                  (
+                    (msg.tool_calls as Array<{
+                      id: string;
+                      function: { name: string; arguments?: string };
+                    }>) || []
+                  ).map((call) => ({
+                    id: call.id,
+                    name: sanitizeToolName(call.function.name),
+                    args: parseEnterpriseArguments(call.function.arguments),
+                  })),
+                  normalizeAgyEnterpriseContents(result.contents)
+                )
+              : null;
+            if (toolNameOptions.agyEnterprise && !replay)
+              missingAgyEnterpriseReplay(
+                describeAgyEnterpriseReplayFailure(
+                  toolNameOptions.signatureNamespace,
+                  "text",
+                  text,
+                  normalizeAgyEnterpriseContents(result.contents)
+                )
+              );
+            parts.push({
+              text: replay?.nativeText ?? text,
+              ...(replay?.thoughtSignature ? { thoughtSignature: replay.thoughtSignature } : {}),
+            });
           }
         }
 
@@ -451,15 +501,52 @@ function openaiToGeminiBase(
         if (toolCalls && Array.isArray(toolCalls)) {
           const toolCallIds: string[] = [];
           const resolvedSignatures = new Map<string, string>();
+          const nativeReplayParts = new Map<string, Record<string, unknown>>();
+          const enterpriseCalls = toolNameOptions.agyEnterprise
+            ? toolCalls.map((tc) => ({
+                id: tc.id as string,
+                name: sanitizeToolName((tc.function as { name: string }).name),
+                args: parseEnterpriseArguments((tc.function as { arguments?: string }).arguments),
+              }))
+            : [];
           for (const tc of toolCalls) {
             const id = tc.id as string;
-            const resolved = resolveGeminiThoughtSignature(
-              buildGeminiThoughtSignatureKey(toolNameOptions.signatureNamespace, id),
-              extractClientThoughtSignature(tc)
-            );
+            const replayResolution = toolNameOptions.agyEnterprise
+              ? resolveAgyEnterpriseCallReplay(
+                  toolNameOptions.signatureNamespace,
+                  {
+                    id,
+                    name: sanitizeToolName((tc.function as { name: string }).name),
+                    args: parseEnterpriseArguments(
+                      (tc.function as { arguments?: string }).arguments
+                    ),
+                  },
+                  enterpriseCalls,
+                  normalizeAgyEnterpriseContents(result.contents)
+                )
+              : null;
+            const replay = replayResolution?.ok ? replayResolution.replay : null;
+            if (toolNameOptions.agyEnterprise && !replay)
+              missingAgyEnterpriseReplay(
+                describeAgyEnterpriseReplayFailure(
+                  toolNameOptions.signatureNamespace,
+                  "call",
+                  id,
+                  normalizeAgyEnterpriseContents(result.contents),
+                  replayResolution
+                )
+              );
+            const resolved = toolNameOptions.agyEnterprise
+              ? replay?.thoughtSignature
+              : resolveGeminiThoughtSignature(
+                  buildGeminiThoughtSignatureKey(toolNameOptions.signatureNamespace, id),
+                  extractClientThoughtSignature(tc)
+                );
             if (typeof resolved === "string" && resolved.length > 0) {
               resolvedSignatures.set(id, resolved);
             }
+            if (replay && !resolved) resolvedSignatures.set(id, "");
+            if (replay) nativeReplayParts.set(id, replay.nativePart);
           }
 
           const signaturelessToolCallMode = toolNameOptions.signaturelessToolCallMode;
@@ -475,6 +562,14 @@ function openaiToGeminiBase(
             if (!fn) continue;
 
             const signatureForToolCall = resolvedSignatures.get(id);
+            if (toolNameOptions.agyEnterprise && !resolvedSignatures.has(id))
+              missingAgyEnterpriseReplay();
+
+            if (toolNameOptions.agyEnterprise) {
+              parts.push(nativeReplayParts.get(id) as GeminiPart);
+              toolCallIds.push(id);
+              continue;
+            }
 
             // Non-bypass paths (standard Gemini direct, mode "text"/"context")
             // cannot send a thoughtSignature and reject signature-less native tool
@@ -482,7 +577,7 @@ function openaiToGeminiBase(
             // inert text/context (#3358). The Antigravity/CLI bypass path
             // (supportsSignatureBypass) instead emits native parts carrying the
             // skip_thought_signature_validator sentinel below.
-            if (!toolNameOptions.supportsSignatureBypass) {
+            if (!toolNameOptions.agyEnterprise && !toolNameOptions.supportsSignatureBypass) {
               if (!signatureForToolCall && contextualizeSignaturelessToolResponses) {
                 if (!toolCallIds.includes(id)) toolCallIds.push(id);
               }
@@ -534,6 +629,7 @@ function openaiToGeminiBase(
             if (
               toolNameOptions.supportsSignatureBypass ||
               !contextualizeSignaturelessToolResponses ||
+              toolNameOptions.agyEnterprise ||
               signatureForToolCall
             ) {
               toolCallIds.push(id);
@@ -651,10 +747,13 @@ function openaiToGeminiBase(
   }
 
   // Collapse any consecutive same-role contents Gemini would reject (9router#2191).
-  result.contents = mergeConsecutiveSameRoleContents(result.contents ?? []);
+  result.contents = toolNameOptions.agyEnterprise
+    ? normalizeAgyEnterpriseContents(result.contents ?? [])
+    : mergeConsecutiveSameRoleContents(result.contents ?? []);
   // Guard the one alternation violation the merge above cannot reach: history
   // that opens with a functionCall-bearing turn instead of a user turn.
-  result.contents = ensureHistoryDoesNotOpenWithFunctionCall(result.contents);
+  if (!toolNameOptions.agyEnterprise)
+    result.contents = ensureHistoryDoesNotOpenWithFunctionCall(result.contents);
 
   // Convert tools
   const bodyTools = body.tools as Array<Record<string, unknown>> | undefined;
@@ -664,10 +763,12 @@ function openaiToGeminiBase(
   });
 
   // Support for Google Search grounding if requested via 'google_search' tool
-  const hasGoogleSearch = bodyTools?.some((t) => {
-    const fn = t.function as { name?: string } | undefined;
-    return t.type === "function" && (fn?.name === "google_search" || fn?.name === "googleSearch");
-  });
+  const hasGoogleSearch =
+    !toolNameOptions.agyEnterprise &&
+    bodyTools?.some((t) => {
+      const fn = t.function as { name?: string } | undefined;
+      return t.type === "function" && (fn?.name === "google_search" || fn?.name === "googleSearch");
+    });
 
   type ToolEntry = NonNullable<GeminiRequest["tools"]>[number];
 
@@ -676,9 +777,10 @@ function openaiToGeminiBase(
     if (hasGoogleSearch) {
       result.tools.push({ googleSearch: {} });
     }
-    result.toolConfig = {
-      functionCallingConfig: convertOpenAIToolChoiceToGemini(body.tool_choice),
-    };
+    if (!toolNameOptions.agyEnterprise)
+      result.toolConfig = {
+        functionCallingConfig: convertOpenAIToolChoiceToGemini(body.tool_choice),
+      };
   } else if (hasGoogleSearch) {
     result.tools = [{ googleSearch: {} }];
   }
@@ -733,15 +835,30 @@ export function openaiToGeminiRequest(
   // response turn under `<connectionId>:<toolCallId>`) is found and re-attached to the
   // functionCall on the follow-up request. Without this the streaming lookup key didn't
   // match and Gemini rejected tool calls with 400 "missing thought_signature" (#2504).
-  const signatureNamespace =
+  let signatureNamespace =
     credentials && typeof credentials["_signatureNamespace"] === "string"
       ? credentials["_signatureNamespace"]
       : null;
-  return openaiToGeminiBase(model, body, stream, {
+  const agyEnterprise = credentials?._provider === "agy-enterprise";
+  if (agyEnterprise) assertAgyEnterpriseToolChoice(body.tool_choice);
+  if (agyEnterprise) assertAgyEnterpriseClientMedia(body);
+  if (agyEnterprise && signatureNamespace)
+    signatureNamespace = buildAgyEnterpriseReplayNamespace(signatureNamespace, model);
+  const result = openaiToGeminiBase(model, body, stream, {
+    agyEnterprise,
     signatureNamespace,
     signaturelessToolCallMode: options.signaturelessToolCallMode,
     stripFunctionCallId: isVertexGeminiProvider(credentials?._provider),
   });
+  if (agyEnterprise && body.generationConfig && typeof body.generationConfig === "object") {
+    result.generationConfig = { ...result.generationConfig, ...body.generationConfig };
+  }
+  if (agyEnterprise && result.systemInstruction) result.systemInstruction.role = "user";
+  if (agyEnterprise)
+    result._agyEnterpriseHistory = new Map([
+      ["history", agyEnterpriseHistorySnapshot(result.contents)],
+    ]);
+  return result;
 }
 
 // OpenAI -> Cloud Code Gemini payload used by Antigravity.

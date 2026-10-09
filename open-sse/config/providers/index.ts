@@ -138,6 +138,7 @@ import { liquidProvider } from "./registry/liquid/index.ts";
 import { arceeAiProvider } from "./registry/arcee-ai/index.ts";
 import { deepinfraProvider } from "./registry/deepinfra/index.ts";
 import { agyProvider } from "./registry/agy/index.ts";
+import { agyEnterpriseProvider } from "./registry/agy-enterprise/index.ts";
 import { agnesProvider } from "./registry/agnes/index.ts";
 import { aihordeProvider } from "./registry/aihorde/index.ts";
 import { ainativeProvider } from "./registry/ainative/index.ts";
@@ -411,6 +412,7 @@ export const REGISTRY: Record<string, RegistryEntry> = {
   "arcee-ai": arceeAiProvider,
   deepinfra: deepinfraProvider,
   agy: agyProvider,
+  "agy-enterprise": agyEnterpriseProvider,
   agnes: agnesProvider,
   "agnes-cn": agnes_cnProvider,
   aihorde: aihordeProvider,

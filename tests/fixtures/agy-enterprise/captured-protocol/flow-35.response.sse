@@ -1,0 +1,6 @@
+data: {"candidates": [{"content": {"parts": [{"thought": true,"text": "SANITIZED_TEXT_88"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_4"}
+
+data: {"candidates": [{"content": {"parts": [{"thoughtSignature": "SYNTHETIC_SIGNATURE_4","functionCall": {"name": "run_command","args": {"CommandLine": "SANITIZED_TEXT_87","toolAction": "SANITIZED_TEXT_86","toolSummary": "SANITIZED_TEXT_84","Cwd": "SANITIZED_TEXT_85","BypassSandbox": true,"WaitMsBeforeAsync": 5000},"id": "call_2"}}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_4"}
+
+data: {"candidates": [{"content": {"parts": [{"text": ""}],"role": "model"},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 12137,"candidatesTokenCount": 64,"totalTokenCount": 12325,"thoughtsTokenCount": 124,"cachedContentTokenCount": 7398,"promptTokensDetails": [{"modality": "TEXT","tokenCount": 12137}],"cacheTokensDetails": [{"modality": "TEXT","tokenCount": 7398}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 64}]},"modelVersion": "gemini-3.8-flash","responseId": "responseId_4"}
+

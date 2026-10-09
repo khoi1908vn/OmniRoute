@@ -1,5 +1,6 @@
 import { buildGitLabOAuthEndpoints, resolveGitLabOAuthBaseUrl } from "@/lib/oauth/gitlab";
 import { ANTIGRAVITY_RUNTIME_BASE_URLS } from "@omniroute/open-sse/config/antigravityUpstream.ts";
+import { buildAgyEnterpriseProbe } from "@omniroute/open-sse/services/agyEnterpriseConnectionTest.ts";
 import { getAntigravityContentHeaders } from "@omniroute/open-sse/services/antigravityHeaders.ts";
 import { getAntigravityClientProfile } from "@omniroute/open-sse/services/antigravityClientProfile.ts";
 import {
@@ -11,6 +12,7 @@ import {
   ANTIGRAVITY_REQUIRES_MANUAL_PROJECT,
 } from "@omniroute/open-sse/services/antigravityProjectBootstrap.ts";
 import { isGeoBlockedError } from "@omniroute/open-sse/services/errorClassifier.ts";
+import { agyEnterpriseContextSchema } from "@omniroute/open-sse/utils/agyEnterprise.ts";
 
 // Real model-surface probe for antigravity/agy. The previous probe only hit the
 // OAuth userinfo endpoint, which is NOT geo-restricted — so "Test Connection"
@@ -119,6 +121,7 @@ export interface OAuthTestProbeRequest {
 }
 
 export interface OAuthTestConfigEntry {
+  validateConnection?: (connection: { providerSpecificData?: unknown }) => void;
   url?: string;
   method?: string;
   authHeader?: string;
@@ -218,6 +221,13 @@ export const OAUTH_TEST_CONFIG: Record<string, OAuthTestConfigEntry> = {
   agy: {
     buildProbe: buildAntigravityProbe,
     inconclusiveStatuses: [400],
+    refreshable: true,
+  },
+  "agy-enterprise": {
+    validateConnection: (connection) => {
+      agyEnterpriseContextSchema.parse(connection.providerSpecificData);
+    },
+    buildProbe: buildAgyEnterpriseProbe,
     refreshable: true,
   },
   xai: XAI_CHAT_OAUTH_TEST_CONFIG,

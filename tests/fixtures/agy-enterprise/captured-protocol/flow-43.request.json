@@ -1,0 +1,1190 @@
+{
+  "aicode": { "experience": "gemini-3.8-flash-high" },
+  "contents": [
+    { "parts": [{ "text": "SANITIZED_TEXT_4" }], "role": "user" },
+    {
+      "parts": [{ "text": "SANITIZED_TEXT_81", "thoughtSignature": "SYNTHETIC_SIGNATURE_2" }],
+      "role": "model"
+    },
+    { "parts": [{ "text": "SANITIZED_TEXT_82" }], "role": "user" },
+    {
+      "parts": [
+        {
+          "functionCall": {
+            "name": "run_command",
+            "args": {
+              "BypassSandbox": false,
+              "CommandLine": "SANITIZED_TEXT_87",
+              "Cwd": "SANITIZED_TEXT_85",
+              "WaitMsBeforeAsync": 5000,
+              "toolAction": "SANITIZED_TEXT_86",
+              "toolSummary": "SANITIZED_TEXT_84"
+            },
+            "id": "call_1"
+          },
+          "thoughtSignature": "SYNTHETIC_SIGNATURE_3"
+        }
+      ],
+      "role": "model"
+    },
+    {
+      "parts": [
+        {
+          "functionResponse": {
+            "name": "run_command",
+            "response": { "output": "SANITIZED_OUTPUT_1" },
+            "id": "call_1"
+          }
+        }
+      ],
+      "role": "model"
+    },
+    {
+      "parts": [
+        {
+          "functionCall": {
+            "name": "run_command",
+            "args": {
+              "BypassSandbox": true,
+              "CommandLine": "SANITIZED_TEXT_87",
+              "Cwd": "SANITIZED_TEXT_85",
+              "WaitMsBeforeAsync": 5000,
+              "toolAction": "SANITIZED_TEXT_86",
+              "toolSummary": "SANITIZED_TEXT_84"
+            },
+            "id": "call_2"
+          },
+          "thoughtSignature": "SYNTHETIC_SIGNATURE_4"
+        }
+      ],
+      "role": "model"
+    },
+    {
+      "parts": [
+        {
+          "functionResponse": {
+            "name": "run_command",
+            "response": { "output": "SANITIZED_OUTPUT_2" },
+            "id": "call_2"
+          }
+        }
+      ],
+      "role": "model"
+    },
+    {
+      "parts": [{ "text": "SANITIZED_TEXT_89", "thoughtSignature": "SYNTHETIC_SIGNATURE_5" }],
+      "role": "model"
+    },
+    {
+      "parts": [
+        { "text": "SANITIZED_TEXT_90" },
+        {
+          "inlineData": {
+            "mimeType": "image/png",
+            "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
+          }
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "systemInstruction": { "parts": [{ "text": "SANITIZED_TEXT_5" }], "role": "user" },
+  "tools": [
+    {
+      "functionDeclarations": [
+        {
+          "name": "view_file",
+          "description": "SANITIZED_TEXT_6",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "AbsolutePath": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_7",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "ContentOffset": {
+                "type": "INTEGER",
+                "description": "SANITIZED_TEXT_8",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "EndLine": {
+                "type": "INTEGER",
+                "description": "SANITIZED_TEXT_9",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "StartLine": {
+                "type": "INTEGER",
+                "description": "SANITIZED_TEXT_10",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolAction": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_11",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolSummary": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_12",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              }
+            },
+            "required": ["AbsolutePath", "toolSummary", "toolAction"],
+            "minimum": 0,
+            "maximum": 0,
+            "minLength": "0",
+            "maxLength": "0",
+            "pattern": ""
+          }
+        }
+      ]
+    },
+    {
+      "functionDeclarations": [
+        {
+          "name": "run_command",
+          "description": "SANITIZED_TEXT_13",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "BypassSandbox": {
+                "type": "BOOLEAN",
+                "description": "SANITIZED_TEXT_14",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "CommandLine": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_15",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "Cwd": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_16",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "IsDaemon": {
+                "type": "BOOLEAN",
+                "description": "SANITIZED_TEXT_17",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "WaitMsBeforeAsync": {
+                "type": "INTEGER",
+                "description": "SANITIZED_TEXT_18",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolAction": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_11",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolSummary": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_12",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              }
+            },
+            "required": ["Cwd", "WaitMsBeforeAsync", "CommandLine", "toolSummary", "toolAction"],
+            "minimum": 0,
+            "maximum": 0,
+            "minLength": "0",
+            "maxLength": "0",
+            "pattern": ""
+          }
+        }
+      ]
+    },
+    {
+      "functionDeclarations": [
+        {
+          "name": "manage_task",
+          "description": "SANITIZED_TEXT_19",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "Action": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_20",
+                "enum": ["list", "kill", "status", "send_input"],
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "Input": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_21",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "TaskId": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_22",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolAction": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_11",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolSummary": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_12",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              }
+            },
+            "required": ["Action", "toolSummary", "toolAction"],
+            "minimum": 0,
+            "maximum": 0,
+            "minLength": "0",
+            "maxLength": "0",
+            "pattern": ""
+          }
+        }
+      ]
+    },
+    {
+      "functionDeclarations": [
+        {
+          "name": "send_message",
+          "description": "SANITIZED_TEXT_23",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "Message": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_24",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "Recipient": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_25",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolAction": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_11",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolSummary": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_12",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              }
+            },
+            "required": ["Recipient", "Message", "toolSummary", "toolAction"],
+            "minimum": 0,
+            "maximum": 0,
+            "minLength": "0",
+            "maxLength": "0",
+            "pattern": ""
+          }
+        }
+      ]
+    },
+    {
+      "functionDeclarations": [
+        {
+          "name": "schedule",
+          "description": "SANITIZED_TEXT_26",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "CronExpression": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_27",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "DurationSeconds": {
+                "type": "INTEGER",
+                "description": "SANITIZED_TEXT_28",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "IsDaemon": {
+                "type": "BOOLEAN",
+                "description": "SANITIZED_TEXT_29",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "MaxIterations": {
+                "type": "INTEGER",
+                "description": "SANITIZED_TEXT_30",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "Prompt": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_31",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "TimerCondition": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_32",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolAction": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_11",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolSummary": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_12",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              }
+            },
+            "required": ["Prompt", "toolSummary", "toolAction"],
+            "minimum": 0,
+            "maximum": 0,
+            "minLength": "0",
+            "maxLength": "0",
+            "pattern": ""
+          }
+        }
+      ]
+    },
+    {
+      "functionDeclarations": [
+        {
+          "name": "invoke_subagent",
+          "description": "SANITIZED_TEXT_33",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "Subagents": {
+                "type": "ARRAY",
+                "description": "SANITIZED_TEXT_34",
+                "items": {
+                  "type": "OBJECT",
+                  "properties": {
+                    "Model": {
+                      "type": "STRING",
+                      "description": "SANITIZED_TEXT_35",
+                      "enum": ["inherit", "flash_lite", "flash", "pro"],
+                      "minimum": 0,
+                      "maximum": 0,
+                      "minLength": "0",
+                      "maxLength": "0",
+                      "pattern": ""
+                    },
+                    "Prompt": {
+                      "type": "STRING",
+                      "description": "SANITIZED_TEXT_36",
+                      "minimum": 0,
+                      "maximum": 0,
+                      "minLength": "0",
+                      "maxLength": "0",
+                      "pattern": ""
+                    },
+                    "Role": {
+                      "type": "STRING",
+                      "description": "SANITIZED_TEXT_37",
+                      "minimum": 0,
+                      "maximum": 0,
+                      "minLength": "0",
+                      "maxLength": "0",
+                      "pattern": ""
+                    },
+                    "TypeName": {
+                      "type": "STRING",
+                      "description": "SANITIZED_TEXT_38",
+                      "minimum": 0,
+                      "maximum": 0,
+                      "minLength": "0",
+                      "maxLength": "0",
+                      "pattern": ""
+                    },
+                    "Workspace": {
+                      "type": "STRING",
+                      "description": "SANITIZED_TEXT_39",
+                      "minimum": 0,
+                      "maximum": 0,
+                      "minLength": "0",
+                      "maxLength": "0",
+                      "pattern": ""
+                    }
+                  },
+                  "required": ["TypeName", "Role", "Prompt"],
+                  "minimum": 0,
+                  "maximum": 0,
+                  "minLength": "0",
+                  "maxLength": "0",
+                  "pattern": ""
+                },
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolAction": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_11",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolSummary": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_12",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              }
+            },
+            "required": ["Subagents", "toolSummary", "toolAction"],
+            "minimum": 0,
+            "maximum": 0,
+            "minLength": "0",
+            "maxLength": "0",
+            "pattern": ""
+          }
+        }
+      ]
+    },
+    {
+      "functionDeclarations": [
+        {
+          "name": "define_subagent",
+          "description": "SANITIZED_TEXT_40",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "description": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_41",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "enable_mcp_tools": {
+                "type": "BOOLEAN",
+                "description": "SANITIZED_TEXT_42",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "enable_subagent_tools": {
+                "type": "BOOLEAN",
+                "description": "SANITIZED_TEXT_43",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "enable_write_tools": {
+                "type": "BOOLEAN",
+                "description": "SANITIZED_TEXT_44",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "name": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_45",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "system_prompt": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_46",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolAction": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_11",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolSummary": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_12",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              }
+            },
+            "required": ["name", "description", "system_prompt", "toolSummary", "toolAction"],
+            "minimum": 0,
+            "maximum": 0,
+            "minLength": "0",
+            "maxLength": "0",
+            "pattern": ""
+          }
+        }
+      ]
+    },
+    {
+      "functionDeclarations": [
+        {
+          "name": "manage_subagents",
+          "description": "SANITIZED_TEXT_47",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "Action": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_48",
+                "enum": ["list", "kill", "kill_all"],
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "ConversationIds": {
+                "type": "ARRAY",
+                "description": "SANITIZED_TEXT_49",
+                "items": {
+                  "type": "STRING",
+                  "minimum": 0,
+                  "maximum": 0,
+                  "minLength": "0",
+                  "maxLength": "0",
+                  "pattern": ""
+                },
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolAction": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_11",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolSummary": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_12",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              }
+            },
+            "required": ["Action", "toolSummary", "toolAction"],
+            "minimum": 0,
+            "maximum": 0,
+            "minLength": "0",
+            "maxLength": "0",
+            "pattern": ""
+          }
+        }
+      ]
+    },
+    {
+      "functionDeclarations": [
+        {
+          "name": "write_to_file",
+          "description": "SANITIZED_TEXT_50",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "Append": {
+                "type": "BOOLEAN",
+                "description": "SANITIZED_TEXT_51",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "ArtifactMetadata": {
+                "type": "OBJECT",
+                "description": "SANITIZED_TEXT_52",
+                "properties": {
+                  "RequestFeedback": {
+                    "type": "BOOLEAN",
+                    "description": "SANITIZED_TEXT_53",
+                    "minimum": 0,
+                    "maximum": 0,
+                    "minLength": "0",
+                    "maxLength": "0",
+                    "pattern": ""
+                  },
+                  "Summary": {
+                    "type": "STRING",
+                    "description": "SANITIZED_TEXT_54",
+                    "minimum": 0,
+                    "maximum": 0,
+                    "minLength": "0",
+                    "maxLength": "0",
+                    "pattern": ""
+                  },
+                  "UserFacing": {
+                    "type": "BOOLEAN",
+                    "description": "SANITIZED_TEXT_55",
+                    "minimum": 0,
+                    "maximum": 0,
+                    "minLength": "0",
+                    "maxLength": "0",
+                    "pattern": ""
+                  }
+                },
+                "required": ["Summary", "UserFacing", "RequestFeedback"],
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "CodeContent": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_56",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "Description": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_57",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "Overwrite": {
+                "type": "BOOLEAN",
+                "description": "SANITIZED_TEXT_58",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "TargetFile": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_59",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolAction": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_11",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolSummary": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_12",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              }
+            },
+            "required": [
+              "TargetFile",
+              "Overwrite",
+              "CodeContent",
+              "Description",
+              "toolSummary",
+              "toolAction"
+            ],
+            "minimum": 0,
+            "maximum": 0,
+            "minLength": "0",
+            "maxLength": "0",
+            "pattern": ""
+          }
+        }
+      ]
+    },
+    {
+      "functionDeclarations": [
+        {
+          "name": "replace_file_content",
+          "description": "SANITIZED_TEXT_60",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "AllowMultiple": {
+                "type": "BOOLEAN",
+                "description": "SANITIZED_TEXT_61",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "Description": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_57",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "EndLine": {
+                "type": "INTEGER",
+                "description": "SANITIZED_TEXT_62",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "Instruction": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_63",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "ReplacementContent": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_64",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "StartLine": {
+                "type": "INTEGER",
+                "description": "SANITIZED_TEXT_65",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "TargetContent": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_66",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "TargetFile": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_67",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "TargetLintErrorIds": {
+                "type": "ARRAY",
+                "description": "SANITIZED_TEXT_68",
+                "items": {
+                  "type": "STRING",
+                  "minimum": 0,
+                  "maximum": 0,
+                  "minLength": "0",
+                  "maxLength": "0",
+                  "pattern": ""
+                },
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolAction": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_11",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolSummary": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_12",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              }
+            },
+            "required": [
+              "TargetFile",
+              "Instruction",
+              "Description",
+              "AllowMultiple",
+              "TargetContent",
+              "ReplacementContent",
+              "StartLine",
+              "EndLine",
+              "toolSummary",
+              "toolAction"
+            ],
+            "minimum": 0,
+            "maximum": 0,
+            "minLength": "0",
+            "maxLength": "0",
+            "pattern": ""
+          }
+        }
+      ]
+    },
+    {
+      "functionDeclarations": [
+        {
+          "name": "read_url_content",
+          "description": "SANITIZED_TEXT_69",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "Url": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_70",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolAction": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_11",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolSummary": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_12",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              }
+            },
+            "required": ["Url", "toolSummary", "toolAction"],
+            "minimum": 0,
+            "maximum": 0,
+            "minLength": "0",
+            "maxLength": "0",
+            "pattern": ""
+          }
+        }
+      ]
+    },
+    {
+      "functionDeclarations": [
+        {
+          "name": "search_web",
+          "description": "SANITIZED_TEXT_71",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "domain": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_72",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "query": {
+                "type": "STRING",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolAction": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_11",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolSummary": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_12",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              }
+            },
+            "required": ["query", "toolSummary", "toolAction"],
+            "minimum": 0,
+            "maximum": 0,
+            "minLength": "0",
+            "maxLength": "0",
+            "pattern": ""
+          }
+        }
+      ]
+    },
+    {
+      "functionDeclarations": [
+        {
+          "name": "ask_question",
+          "description": "SANITIZED_TEXT_73",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "questions": {
+                "type": "ARRAY",
+                "description": "SANITIZED_TEXT_74",
+                "items": {
+                  "type": "OBJECT",
+                  "properties": {
+                    "is_multi_select": {
+                      "type": "BOOLEAN",
+                      "description": "SANITIZED_TEXT_75",
+                      "minimum": 0,
+                      "maximum": 0,
+                      "minLength": "0",
+                      "maxLength": "0",
+                      "pattern": ""
+                    },
+                    "options": {
+                      "type": "ARRAY",
+                      "description": "SANITIZED_TEXT_76",
+                      "items": {
+                        "type": "STRING",
+                        "minimum": 0,
+                        "maximum": 0,
+                        "minLength": "0",
+                        "maxLength": "0",
+                        "pattern": ""
+                      },
+                      "minimum": 0,
+                      "maximum": 0,
+                      "minLength": "0",
+                      "maxLength": "0",
+                      "pattern": ""
+                    },
+                    "question": {
+                      "type": "STRING",
+                      "description": "SANITIZED_TEXT_77",
+                      "minimum": 0,
+                      "maximum": 0,
+                      "minLength": "0",
+                      "maxLength": "0",
+                      "pattern": ""
+                    }
+                  },
+                  "minimum": 0,
+                  "maximum": 0,
+                  "minLength": "0",
+                  "maxLength": "0",
+                  "pattern": ""
+                },
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolAction": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_11",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              },
+              "toolSummary": {
+                "type": "STRING",
+                "description": "SANITIZED_TEXT_12",
+                "minimum": 0,
+                "maximum": 0,
+                "minLength": "0",
+                "maxLength": "0",
+                "pattern": ""
+              }
+            },
+            "required": ["toolSummary", "toolAction"],
+            "minimum": 0,
+            "maximum": 0,
+            "minLength": "0",
+            "maxLength": "0",
+            "pattern": ""
+          }
+        }
+      ]
+    }
+  ],
+  "labels": {
+    "cascade_id": "root_cascade_id_1",
+    "last_execution_id": "last_execution_id_2",
+    "last_step_index": "8",
+    "model_enum": "model_placeholder_m318",
+    "root_cascade_id": "root_cascade_id_1",
+    "used_claude": "false",
+    "used_claude_conservative": "false",
+    "used_non_gemini_model": "false"
+  },
+  "generationConfig": {
+    "maxOutputTokens": 65536,
+    "responseMimeType": "",
+    "thinkingConfig": { "includeThoughts": true, "thinkingBudget": -1 }
+  },
+  "entitlement": { "userTier": "gcp-ge-standard-tier" }
+}

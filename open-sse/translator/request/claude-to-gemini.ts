@@ -5,6 +5,10 @@ import { buildGeminiTools, sanitizeGeminiToolName } from "../helpers/geminiTools
 import {
   buildGeminiThoughtSignatureKey,
   resolveGeminiThoughtSignature,
+  buildAgyEnterpriseReplayNamespace,
+  getAgyEnterpriseTextReplay,
+  resolveAgyEnterpriseCallReplay,
+  describeAgyEnterpriseReplayFailure,
 } from "../../services/geminiThoughtSignatureStore.ts";
 import { capMaxOutputTokens, capThinkingBudget } from "../../../src/lib/modelCapabilities.ts";
 import { getModelSpec } from "../../../src/shared/constants/modelSpecs.ts";
@@ -13,6 +17,11 @@ import {
   buildHistoricalToolResultContext,
   mergeConsecutiveSameRoleContents,
   ensureHistoryDoesNotOpenWithFunctionCall,
+  normalizeAgyEnterpriseContents,
+  assertAgyEnterpriseToolChoice,
+  missingAgyEnterpriseReplay,
+  assertAgyEnterpriseClientMedia,
+  agyEnterpriseHistorySnapshot,
   type GeminiContent,
 } from "./openai-to-gemini/helpers.ts";
 
@@ -57,29 +66,37 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
   // (#3440). The public Gemini API keeps it for Gemini 3+ signature matching, so this
   // is scoped to the routed vertex provider only (threaded via credentials._provider).
   const provider = credentials && typeof credentials === "object" ? credentials._provider : null;
+  const agyEnterprise = provider === "agy-enterprise";
+  if (agyEnterprise) assertAgyEnterpriseToolChoice(body.tool_choice);
   const stripFunctionCallId = provider === "vertex" || provider === "vertex-partner";
   // Thread the signature namespace so a thinking model's thoughtSignature (cached on the
   // Gemini→Claude response turn under `<connectionId>:<toolUseId>`) is found and
   // re-attached on the follow-up Claude→Gemini request. Without this, Claude Desktop
   // combo turns hit HTTP 400 "missing thought_signature" (#8979 / #2504 parity).
-  const signatureNamespace =
+  const connectionNamespace =
     credentials &&
     typeof credentials === "object" &&
     typeof credentials._signatureNamespace === "string"
       ? credentials._signatureNamespace
       : null;
+  const signatureNamespace =
+    agyEnterprise && connectionNamespace
+      ? buildAgyEnterpriseReplayNamespace(connectionNamespace, model)
+      : connectionNamespace;
   const result: {
     model: string;
     contents: GeminiContent[];
     generationConfig: Record<string, unknown>;
-    safetySettings: unknown;
+    safetySettings?: unknown;
     systemInstruction?: { role: string; parts: Array<{ text: string }> };
     tools?: Array<{
       functionDeclarations?: Array<Record<string, unknown>>;
       googleSearch?: Record<string, unknown>;
+      enterpriseWebSearch?: Record<string, unknown>;
       googleSearchRetrieval?: Record<string, unknown>;
     }>;
     _toolNameMap?: Map<string, string>;
+    _agyEnterpriseHistory?: Map<string, string>;
   } = {
     model: model,
     contents: [],
@@ -87,7 +104,7 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
     // Honor an explicit caller-supplied safetySettings (including one that itself
     // requests HARM_CATEGORY_CIVIC_INTEGRITY — the caller's explicit choice), matching
     // the openai-to-gemini.ts standard-path behavior. See DEFAULT_SAFETY_SETTINGS (#8231).
-    safetySettings: body.safetySettings || DEFAULT_SAFETY_SETTINGS,
+    ...(agyEnterprise ? {} : { safetySettings: body.safetySettings || DEFAULT_SAFETY_SETTINGS }),
   };
 
   // ── Generation config ──────────────────────────────────────────
@@ -112,20 +129,38 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
   }
 
   // ── System instruction ─────────────────────────────────────────
+  const instructionTexts: string[] = [];
   if (body.system) {
-    let systemText;
-    if (Array.isArray(body.system)) {
-      systemText = body.system.map((s) => s.text || "").join("\n");
-    } else {
-      systemText = String(body.system);
+    const systemText = Array.isArray(body.system)
+      ? body.system.map((s) => s.text || "").join("\n")
+      : String(body.system);
+    if (systemText) instructionTexts.push(systemText);
+  }
+  const conversationMessages = [];
+  for (const msg of Array.isArray(body.messages) ? body.messages : []) {
+    const role = typeof msg.role === "string" ? msg.role.toLowerCase() : msg.role;
+    if (role !== "system" && role !== "developer") {
+      conversationMessages.push(msg);
+      continue;
     }
-    if (systemText) {
-      result.systemInstruction = {
-        role: "system",
-        parts: [{ text: systemText }],
-      };
+    const blocks = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
+    for (const block of blocks) {
+      if (block?.type !== "text" || typeof block.text !== "string") {
+        throw Object.assign(
+          new Error("Unsupported Gemini instruction content: only text blocks are supported"),
+          { statusCode: 400, errorType: "invalid_request_error" }
+        );
+      }
+      if (block.text) instructionTexts.push(block.text);
     }
   }
+  if (instructionTexts.length > 0) {
+    result.systemInstruction = {
+      role: agyEnterprise ? "user" : "system",
+      parts: [{ text: instructionTexts.join("\n") }],
+    };
+  }
+  if (agyEnterprise) assertAgyEnterpriseClientMedia(body);
 
   // ── Build tool_use name lookup + resolve thought signatures ────
   // Standard Gemini rejects signature-less native functionCall parts with
@@ -135,7 +170,7 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
   const toolUseNames: Record<string, string> = {};
   const resolvedSignatures = new Map<string, string>();
   if (body.messages && Array.isArray(body.messages)) {
-    for (const msg of body.messages) {
+    for (const msg of conversationMessages) {
       if (msg.role === "assistant" && Array.isArray(msg.content)) {
         for (const block of msg.content) {
           if (block.type === "tool_use" && block.id && block.name) {
@@ -144,10 +179,12 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
               (typeof block.thoughtSignature === "string" && block.thoughtSignature) ||
               (typeof block.thought_signature === "string" && block.thought_signature) ||
               null;
-            const resolved = resolveGeminiThoughtSignature(
-              buildGeminiThoughtSignatureKey(signatureNamespace, block.id),
-              clientSignature
-            );
+            const resolved = agyEnterprise
+              ? null
+              : resolveGeminiThoughtSignature(
+                  buildGeminiThoughtSignatureKey(signatureNamespace, block.id),
+                  clientSignature
+                );
             if (typeof resolved === "string" && resolved.length > 0) {
               resolvedSignatures.set(block.id, resolved);
             }
@@ -162,7 +199,20 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
     // Tool-ids whose functionCall was omitted (no stored thought_signature) so the
     // matching tool_result becomes text instead of a Gemini-400'd functionResponse.
     const omittedToolCallIds = new Set<string>();
-    for (const msg of body.messages) {
+    for (const msg of conversationMessages) {
+      const enterpriseHistory = agyEnterprise
+        ? normalizeAgyEnterpriseContents(result.contents)
+        : [];
+      const enterpriseCalls =
+        agyEnterprise && Array.isArray(msg.content)
+          ? msg.content
+              .filter((block) => block.type === "tool_use")
+              .map((block) => ({
+                id: block.id,
+                name: sanitizeToolName(block.name),
+                args: block.input || {},
+              }))
+          : [];
       const parts = [];
       // Images returned inside tool_result blocks go right after the last tool response,
       // ahead of any text that follows it, as on the Claude -> OpenAI -> Gemini path.
@@ -184,10 +234,38 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
               break;
 
             case "tool_use": {
-              const signatureForToolCall = resolvedSignatures.get(block.id);
+              const replayResolution = agyEnterprise
+                ? resolveAgyEnterpriseCallReplay(
+                    signatureNamespace,
+                    { id: block.id, name: sanitizeToolName(block.name), args: block.input || {} },
+                    enterpriseCalls,
+                    enterpriseHistory
+                  )
+                : null;
+              const replay = replayResolution?.ok ? replayResolution.replay : null;
+              const signatureForToolCall = agyEnterprise
+                ? replay?.thoughtSignature
+                : resolvedSignatures.get(block.id);
+              if (agyEnterprise && !replay)
+                missingAgyEnterpriseReplay(
+                  describeAgyEnterpriseReplayFailure(
+                    signatureNamespace,
+                    "call",
+                    block.id,
+                    enterpriseHistory,
+                    replayResolution
+                  )
+                );
+              if (replay || signatureForToolCall)
+                resolvedSignatures.set(block.id, signatureForToolCall || "");
               // Signature-less historical tool_use → omit native functionCall
               // (context mode). Matching tool_result becomes context text below.
-              if (!signatureForToolCall) {
+              if (!agyEnterprise && !signatureForToolCall) {
+                break;
+              }
+
+              if (agyEnterprise && replay) {
+                parts.push(replay.nativePart);
                 break;
               }
 
@@ -282,6 +360,46 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
       }
 
       if (parts.length > 0) {
+        if (agyEnterprise && msg.role === "assistant") {
+          const text = parts
+            .filter((p) => typeof p.text === "string" && !p.thought)
+            .map((p) => p.text)
+            .join("");
+          if (text) {
+            const replay = getAgyEnterpriseTextReplay(
+              signatureNamespace,
+              text,
+              parts.filter((part) => part.functionCall).map((part) => part.functionCall),
+              normalizeAgyEnterpriseContents(result.contents)
+            );
+            if (!replay)
+              missingAgyEnterpriseReplay(
+                describeAgyEnterpriseReplayFailure(
+                  signatureNamespace,
+                  "text",
+                  text,
+                  enterpriseHistory
+                )
+              );
+            const textIndices = parts.flatMap((part, index) =>
+              typeof part.text === "string" && !part.thought ? [index] : []
+            );
+            // A grounded footer may follow a tool, but native text must never
+            // be joined across thinking boundaries.
+            if (parts.slice(textIndices[0], textIndices.at(-1) + 1).some((part) => part.thought))
+              missingAgyEnterpriseReplay();
+            if (
+              replay.nativeText === undefined &&
+              textIndices.some((index, offset) => index !== textIndices[0] + offset)
+            )
+              missingAgyEnterpriseReplay();
+            for (const index of [...textIndices].reverse()) parts.splice(index, 1);
+            parts.splice(textIndices[0], 0, {
+              text: replay.nativeText ?? text,
+              ...(replay.thoughtSignature ? { thoughtSignature: replay.thoughtSignature } : {}),
+            });
+          }
+        }
         // Map Claude roles to Gemini roles
         const geminiRole = msg.role === "assistant" ? "model" : "user";
         result.contents.push({ role: geminiRole, parts });
@@ -292,6 +410,7 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
   // ── Convert tools ──────────────────────────────────────────────
   const geminiTools = buildGeminiTools(body.tools, {
     toolNameMap,
+    agyEnterprise,
   });
   if (geminiTools) {
     result.tools = geminiTools;
@@ -367,10 +486,19 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
   // Gemini strictly rejects requests containing consecutive messages with the same role
   // (400 INVALID_ARGUMENT: "Request contains consecutive messages with the same role").
   // Normalize adjacent same-role messages by concatenating their parts.
-  result.contents = mergeConsecutiveSameRoleContents(result.contents);
+  result.contents = agyEnterprise
+    ? normalizeAgyEnterpriseContents(result.contents)
+    : mergeConsecutiveSameRoleContents(result.contents);
   // Guard the one alternation violation the merge above cannot reach: history
   // that opens with a functionCall-bearing turn instead of a user turn.
-  result.contents = ensureHistoryDoesNotOpenWithFunctionCall(result.contents);
+  if (!agyEnterprise) result.contents = ensureHistoryDoesNotOpenWithFunctionCall(result.contents);
+  if (agyEnterprise && body.generationConfig && typeof body.generationConfig === "object") {
+    result.generationConfig = { ...result.generationConfig, ...body.generationConfig };
+  }
+  if (agyEnterprise)
+    result._agyEnterpriseHistory = new Map([
+      ["history", agyEnterpriseHistorySnapshot(result.contents)],
+    ]);
 
   return result;
 }

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { resetDbInstance } from "../../src/lib/db/core.ts";
 
 const genericModule = await import("../../open-sse/services/genericQuotaFetcher.ts");
 const preflightModule = await import("../../open-sse/services/quotaPreflight.ts");
@@ -15,7 +16,60 @@ const {
   __agePendingForceRefreshMissForTests,
   __resetGenericQuotaFetcherForTests,
 } = genericModule;
-const { getQuotaFetcher } = preflightModule;
+const { getQuotaFetcher, preflightQuota } = preflightModule;
+
+test.after(() => resetDbInstance());
+
+test("Enterprise advisory usage is excluded from routing quota fetches", async () => {
+  const connection = { provider: "agy-enterprise", id: "enterprise-advisory" };
+  let usageCalls = 0;
+  __setGenericUsageFetcherForTests(async () => {
+    usageCalls++;
+    return {
+      quotas: null,
+      quotaObservations: {
+        authority: "advisory",
+        buckets: [{ bucketId: "gemini-3.8-flash-high", remainingFraction: 0 }],
+      },
+    };
+  });
+  registerGenericQuotaFetchers();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    assert.deepEqual(
+      await preflightQuota("agy-enterprise", connection.id, connection, {
+        resolveMinRemainingPercent: () => 50,
+      }),
+      { proceed: true }
+    );
+    assert.equal(await fetchGenericQuota(connection.id, connection), null);
+  }
+  assert.equal(usageCalls, 0);
+  assert.equal(getQuotaFetcher("agy-enterprise"), undefined);
+});
+
+test("registered authoritative quota still enforces a restrictive routing threshold", async () => {
+  registerGenericQuotaFetchers();
+  const connection = { provider: "glm", id: "authoritative-threshold" };
+  let usageCalls = 0;
+  __setGenericUsageFetcherForTests(async () => {
+    usageCalls++;
+    return { quotas: { session: { remainingPercentage: 30 } } };
+  });
+  assert.equal(getQuotaFetcher("glm"), fetchGenericQuota);
+  assert.deepEqual(
+    await preflightQuota("glm", connection.id, connection, {
+      resolveMinRemainingPercent: () => 50,
+    }),
+    {
+      proceed: false,
+      reason: "quota_exhausted",
+      quotaPercent: 0.7,
+      resetAt: null,
+      windowName: "session",
+    }
+  );
+  assert.equal(usageCalls, 1);
+});
 
 function usageShape(remainingPercentage: number) {
   return {

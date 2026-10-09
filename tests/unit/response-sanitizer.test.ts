@@ -423,6 +423,39 @@ test("sanitizeResponsesApiResponse converts chat completions tool calls into Res
   assert.equal((sanitized as any).usage.output_tokens_details.reasoning_tokens, 2);
 });
 
+for (const { finishReason, reason } of [
+  { finishReason: "content_filter", reason: "content_filter" },
+  { finishReason: "length", reason: "max_output_tokens" },
+]) {
+  test(`sanitizeResponsesApiResponse converts empty ${finishReason} Chat termination to incomplete`, () => {
+    const sanitized = sanitizeResponsesApiResponse({
+      object: "chat.completion",
+      choices: [{ finish_reason: finishReason, message: { role: "assistant", content: null } }],
+    });
+    assert.equal(sanitized.status, "incomplete");
+    assert.deepEqual(sanitized.incomplete_details, { reason });
+  });
+}
+
+test("sanitizeResponsesApiResponse keeps ordinary empty STOP Chat termination completed", () => {
+  const sanitized = sanitizeResponsesApiResponse({
+    object: "chat.completion",
+    choices: [{ finish_reason: "stop", message: { role: "assistant", content: null } }],
+  });
+  assert.equal(sanitized.status, "completed");
+  assert.equal(sanitized.incomplete_details, undefined);
+});
+
+test("sanitizeResponsesApiResponse does not mark upstream Chat errors as filtered completions", () => {
+  const sanitized = sanitizeResponsesApiResponse({
+    object: "chat.completion",
+    choices: [{ finish_reason: "content_filter", message: { role: "assistant", content: null } }],
+    error: { code: 503, message: "Service unavailable" },
+  });
+  assert.equal(sanitized.incomplete_details, undefined);
+  assert.notEqual(sanitized.status, "incomplete");
+});
+
 test("sanitizeResponsesApiResponse synthesizes an output[] message from output_text-only bodies (#4942 regression)", () => {
   const sanitized = sanitizeResponsesApiResponse({
     object: "response",

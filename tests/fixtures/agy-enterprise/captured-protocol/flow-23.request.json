@@ -1,0 +1,10 @@
+{
+  "aicode": { "experience": "gemini-3.5-flash-lite" },
+  "contents": [{ "parts": [{ "text": "SANITIZED_TEXT_1" }], "role": "user" }],
+  "systemInstruction": { "parts": [{ "text": "SANITIZED_TEXT_2" }], "role": "user" },
+  "generationConfig": {
+    "responseMimeType": "",
+    "thinkingConfig": { "includeThoughts": false, "thinkingBudget": 0 }
+  },
+  "entitlement": { "userTier": "gcp-ge-standard-tier" }
+}

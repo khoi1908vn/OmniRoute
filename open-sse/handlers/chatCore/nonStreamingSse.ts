@@ -4,13 +4,14 @@ import {
   parseSSEToClaudeResponse,
   parseSSEToOpenAIResponse,
 } from "../sseParser.ts";
-import { parseSSEToGeminiResponse } from "../sseParser/geminiResponse.ts";
+import { parseSSEToGeminiResponse, type GeminiReplayContext } from "../sseParser/geminiResponse.ts";
 import { getHeaderValueCaseInsensitive } from "./headers.ts";
 
 export function parseNonStreamingSSEPayload(
   rawBody: string,
   preferredFormat: string,
-  fallbackModel: string
+  fallbackModel: string,
+  context?: GeminiReplayContext
 ): { body: Record<string, unknown>; format: string } | null {
   const formatsToTry: string[] = [];
   const seen = new Set<string>();
@@ -33,7 +34,7 @@ export function parseNonStreamingSSEPayload(
         : format === FORMATS.CLAUDE
           ? parseSSEToClaudeResponse(rawBody, fallbackModel)
           : format === FORMATS.GEMINI || format === FORMATS.ANTIGRAVITY
-            ? parseSSEToGeminiResponse(rawBody, fallbackModel)
+            ? parseSSEToGeminiResponse(rawBody, fallbackModel, context)
             : parseSSEToOpenAIResponse(rawBody, fallbackModel);
     if (parsed && typeof parsed === "object") {
       return {
@@ -41,6 +42,7 @@ export function parseNonStreamingSSEPayload(
         format,
       };
     }
+    if (context?.provider === "agy-enterprise" && format === FORMATS.GEMINI) return null;
   }
 
   return null;

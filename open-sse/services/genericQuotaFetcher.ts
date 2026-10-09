@@ -389,6 +389,8 @@ export const fetchGenericQuota: QuotaFetcher = async (connectionId, connection) 
   const conn = connection as ConnectionInputs;
   const provider = typeof conn.provider === "string" ? conn.provider.trim() : "";
   if (!provider) return null;
+  // Enterprise observations are advisory and must stay outside routing's latency path.
+  if (provider === "agy-enterprise") return null;
 
   const requestedModel =
     typeof connection.requestedModel === "string" ? connection.requestedModel : undefined;
@@ -488,6 +490,7 @@ export function invalidateGenericQuotaCacheOnStatus(args: {
  */
 export function registerGenericQuotaFetchers(): void {
   for (const provider of USAGE_FETCHER_PROVIDERS) {
+    if (provider === "agy-enterprise") continue; // dashboard observations are advisory only
     if (getQuotaFetcher(provider)) continue; // bespoke fetcher already registered — leave it alone
     registerQuotaFetcher(provider, fetchGenericQuota);
   }

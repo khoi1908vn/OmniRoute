@@ -73,8 +73,8 @@ function getPostExchangeHeaders(
     : getAntigravityIdeNodeHeaders(accessToken);
 }
 
-function buildAntigravityAuthUrl(
-  config: AntigravityOAuthConfig,
+export function buildAntigravityAuthUrl(
+  config: Pick<AntigravityOAuthConfig, "clientId" | "authorizeUrl" | "scopes">,
   redirectUri: string,
   state: string,
   codeChallenge?: string
@@ -95,7 +95,7 @@ function buildAntigravityAuthUrl(
   return `${config.authorizeUrl}?${params.toString()}`;
 }
 
-async function exchangeAntigravityToken(
+export async function exchangeAntigravityToken(
   config: AntigravityOAuthConfig,
   clientProfile: AntigravityClientProfile,
   code: string,
@@ -117,6 +117,7 @@ async function exchangeAntigravityToken(
       "User-Agent": getAntigravityOAuthUserAgent(clientProfile),
     },
     body: new URLSearchParams(bodyParams),
+    signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) {
     throw new Error(`Token exchange failed: ${await response.text()}`);
@@ -297,9 +298,7 @@ export function createAntigravityOAuthProvider(
         // env-level custom client later on. Compare by value against the
         // embedded default: `config` may be the very same object as
         // ANTIGRAVITY_CONFIG when no runtime override exists.
-        oauthClient: isCustomAntigravityClient(config)
-          ? `custom:${config.clientId}`
-          : "builtin",
+        oauthClient: isCustomAntigravityClient(config) ? `custom:${config.clientId}` : "builtin",
       })),
     mapTokens: (tokens, extra) => mapAntigravityTokens(clientProfile, tokens, extra),
   };

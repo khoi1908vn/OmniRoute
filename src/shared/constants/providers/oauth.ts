@@ -87,6 +87,20 @@ export const OAUTH_PROVIDERS = {
     authHint:
       "Import your Antigravity CLI (`agy`) login (paste/upload its token file), auto-detect a local CLI login, or sign in with Google. Shares the Antigravity backend (incl. Claude models).",
   },
+  "agy-enterprise": {
+    id: "agy-enterprise",
+    serviceKinds: ["llm"],
+    alias: "agy-enterprise",
+    name: "Antigravity Enterprise",
+    passthroughModels: true,
+    icon: "terminal",
+    color: "#F59E0B",
+    textIcon: "AGY",
+    subscriptionRisk: true,
+    riskNoticeVariant: "oauth",
+    authHint:
+      "Sign in with Google, select a US or EU Enterprise license, then Save. Discover account-listed text models or add a custom experience ID; availability depends on your license. Setup expires after 15 minutes.",
+  },
   kiro: {
     id: "kiro",
     serviceKinds: ["llm"],

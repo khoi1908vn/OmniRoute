@@ -790,7 +790,7 @@ function convertOpenAINonStreamingToClaude(
       type: "text",
       text: reasoningText,
     });
-  } else if (!hasTextOrReasoning) {
+  } else if (!hasTextOrReasoning && !hasToolCalls) {
     content.push({
       type: "text",
       text: "(empty response)",

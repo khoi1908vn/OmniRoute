@@ -23,6 +23,7 @@ Live count: `ls open-sse/services/*.ts | wc -l` (currently 134). More including 
 ### Account & Token Management
 
 - **`tokenRefresh.ts`** — OAuth token expiration detection and refresh.
+- **`agyEnterpriseConnectionTest.ts`** — Builds the licensed Enterprise inference probe for the dashboard's shared OAuth connection-test path; reuses executor request construction without owning transport or refresh.
 - **`accountFallback.ts`** — Account switching on quota/rate-limit. Also houses model lockout.
 - **`sessionManager.ts`** — Request session state across retries.
 

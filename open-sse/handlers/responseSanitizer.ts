@@ -4,6 +4,7 @@ import {
 } from "../utils/reasoningFields.ts";
 import { stripInternalReasoningPlaceholder } from "../utils/reasoningPlaceholder.ts";
 import { normalizeOpenAICompatibleFinishReason } from "../utils/finishReason.ts";
+import { finalizeResponsesTerminalStatus } from "../translator/helpers/responsesTerminalStatus.ts";
 import {
   collapseExcessiveNewlines,
   extractThinkingFromContent,
@@ -1055,6 +1056,11 @@ function convertOpenAIResponseToResponses(openaiResponse: JsonRecord): JsonRecor
     error: null,
     output,
   };
+  finalizeResponsesTerminalStatus(
+    sanitized,
+    normalizeOpenAICompatibleFinishReason(choice.finish_reason),
+    !!openaiResponse.error
+  );
 
   const outputText = extractResponsesOutputText(output);
   if (outputText.length > 0) {

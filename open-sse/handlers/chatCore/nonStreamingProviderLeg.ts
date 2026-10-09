@@ -36,6 +36,7 @@ import {
 import { isEmptyContentResponse } from "../../services/errorClassifier.ts";
 import { FORMATS } from "../../translator/formats.ts";
 import { hasActiveClaudeThinking } from "../../utils/thinkingBudget.ts";
+import { extractEnterpriseReplaySchemas } from "../../translator/response/openai-responses/toolSchemas.ts";
 
 /* -- exported types -------------------------------------------------------- */
 
@@ -347,6 +348,10 @@ export async function runNonStreamingProviderLeg(
   const effectiveModel = input.effectiveModel ?? input.model ?? "unknown";
   const currentModel = effectiveModel;
   const provider = input.provider ?? "unknown";
+  const enterpriseReplaySchemas =
+    provider === "agy-enterprise"
+      ? extractEnterpriseReplaySchemas(input.sourceBody, input.toolNameMap)
+      : undefined;
   const sourceFormat = input.sourceFormat ?? "openai";
   const targetFormat = input.targetFormat ?? "openai";
   const clientResponseFormat = input.clientResponseFormat ?? "openai";
@@ -622,11 +627,19 @@ export async function runNonStreamingProviderLeg(
           if (fallbackResult.response.ok) {
             const fallbackParsed = await parseNonStreamingResponseBody({
               providerResponse: fallbackResult.response,
-              upstreamStream: false,
+              upstreamStream: provider === "agy-enterprise",
               providerHeaders: new Headers(fallbackResult.headers),
               finalBody: fallbackResult.transformedBody as Record<string, unknown> | null,
               targetFormat,
               model: nextModel,
+              geminiReplayContext: {
+                schemas: enterpriseReplaySchemas,
+                provider,
+                connectionId: input.getCurrentConnectionId?.() || input.connectionId,
+                experience: nextModel,
+                history: (fallbackResult.transformedBody as Record<string, unknown> | null)
+                  ?.contents,
+              },
               log,
             });
             if (fallbackParsed.kind !== "invalid_sse" && fallbackParsed.kind !== "invalid_json") {
@@ -701,11 +714,19 @@ export async function runNonStreamingProviderLeg(
           if (fallbackResult.response.ok) {
             const fallbackParsed = await parseNonStreamingResponseBody({
               providerResponse: fallbackResult.response,
-              upstreamStream: false,
+              upstreamStream: provider === "agy-enterprise",
               providerHeaders: new Headers(fallbackResult.headers),
               finalBody: fallbackResult.transformedBody as Record<string, unknown> | null,
               targetFormat,
               model: nextModel,
+              geminiReplayContext: {
+                schemas: enterpriseReplaySchemas,
+                provider,
+                connectionId: input.getCurrentConnectionId?.() || input.connectionId,
+                experience: nextModel,
+                history: (fallbackResult.transformedBody as Record<string, unknown> | null)
+                  ?.contents,
+              },
               log,
             });
             if (fallbackParsed.kind !== "invalid_sse" && fallbackParsed.kind !== "invalid_json") {
@@ -791,11 +812,18 @@ export async function runNonStreamingProviderLeg(
   // -- Non-streaming response parsing (body read exactly once) ----------------
   const parsed = await parseNonStreamingResponseBody({
     providerResponse,
-    upstreamStream: false,
+    upstreamStream: provider === "agy-enterprise",
     providerHeaders: new Headers(executorResult.headers),
     finalBody,
     targetFormat,
     model: currentModel,
+    geminiReplayContext: {
+      schemas: enterpriseReplaySchemas,
+      provider,
+      connectionId: input.getCurrentConnectionId?.() || input.connectionId,
+      experience: currentModel,
+      history: finalBody?.contents,
+    },
     log,
   });
 
@@ -1012,11 +1040,19 @@ export async function runNonStreamingProviderLeg(
           if (fallbackResult.response.ok) {
             const fallbackParsed = await parseNonStreamingResponseBody({
               providerResponse: fallbackResult.response,
-              upstreamStream: false,
+              upstreamStream: provider === "agy-enterprise",
               providerHeaders: new Headers(fallbackResult.headers),
               finalBody: fallbackResult.transformedBody as Record<string, unknown> | null,
               targetFormat,
               model: nextModel,
+              geminiReplayContext: {
+                schemas: enterpriseReplaySchemas,
+                provider,
+                connectionId: input.getCurrentConnectionId?.() || input.connectionId,
+                experience: nextModel,
+                history: (fallbackResult.transformedBody as Record<string, unknown> | null)
+                  ?.contents,
+              },
               log,
             });
             if (fallbackParsed.kind !== "invalid_sse" && fallbackParsed.kind !== "invalid_json") {

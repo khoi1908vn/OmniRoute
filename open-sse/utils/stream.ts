@@ -1,5 +1,6 @@
 import { translateResponse, initState } from "../translator/index.ts";
 import { FORMATS } from "../translator/formats.ts";
+import { buildAgyEnterpriseReplayNamespace } from "../services/geminiThoughtSignatureStore.ts";
 import { appendRequestLog } from "@/lib/usageDb";
 import { clearPendingRequestOnce } from "./pendingRequestCleanup.ts";
 import {
@@ -198,6 +199,7 @@ type StreamOptions = {
   connectionId?: string | null;
   apiKeyInfo?: unknown;
   body?: unknown;
+  enterpriseReplaySchemas?: Map<string, Record<string, unknown>>;
   onComplete?: ((payload: StreamCompletePayload) => void) | null;
   onFailure?: ((payload: StreamFailurePayload) => boolean | void | Promise<void>) | null;
   /**
@@ -216,6 +218,7 @@ type TranslateState = ReturnType<typeof initState> & {
   provider?: string | null;
   toolNameMap?: unknown;
   signatureNamespace?: string | null;
+  enterpriseReplayInvalid?: boolean;
   usage?: unknown;
   finishReason?: unknown;
   copilotCompatibleReasoning?: boolean;
@@ -756,6 +759,7 @@ export function createSSEStream(options: StreamOptions = {}) {
     connectionId = null,
     apiKeyInfo = null,
     body = null,
+    enterpriseReplaySchemas,
     onComplete = null,
     onFailure = null,
     dropResponsesCommentary,
@@ -852,7 +856,12 @@ export function createSSEStream(options: StreamOptions = {}) {
           ...(initState(sourceFormat) as TranslateState),
           provider,
           toolNameMap,
-          signatureNamespace: connectionId,
+          signatureNamespace:
+            provider === "agy-enterprise" && connectionId
+              ? buildAgyEnterpriseReplayNamespace(connectionId, model)
+              : connectionId,
+          enterpriseReplayHistory: asRecord(body)?.contents,
+          enterpriseReplaySchemas,
           copilotCompatibleReasoning,
           suppressThinkClose,
           requestedThinking,
@@ -2287,7 +2296,11 @@ export function createSSEStream(options: StreamOptions = {}) {
           }
 
           const parsed = parseSSELine(trimmed);
-          if (!parsed) continue;
+          if (!parsed) {
+            if (state?.provider === "agy-enterprise" && /^data:\s*\S/.test(trimmed))
+              state.enterpriseReplayInvalid = true;
+            continue;
+          }
 
           if (upstreamErrorForwarded) continue;
 
@@ -2924,6 +2937,12 @@ export function createSSEStream(options: StreamOptions = {}) {
           // Translate mode: process remaining buffer
           if (buffer.trim()) {
             const parsed = parseSSELine(buffer.trim());
+            if (
+              !parsed &&
+              state?.provider === "agy-enterprise" &&
+              /^data:\s*\S/.test(buffer.trim())
+            )
+              state.enterpriseReplayInvalid = true;
             if (parsed && !parsed.done) {
               if (emitTranslatedFailureAndAbort(controller, parsed)) return;
               providerPayloadCollector.push(parsed);
@@ -3240,7 +3259,8 @@ export function createSSETransformStreamWithLogger(
   requestedThinking: boolean | undefined = undefined,
   customToolNames: ReadonlySet<string> = new Set(),
   requestToolIdentityMap: Map<string, { namespace: string; name: string }> | null = null,
-  streamBufferBytes: number = DEFAULT_STREAM_BUFFER_BYTES
+  streamBufferBytes: number = DEFAULT_STREAM_BUFFER_BYTES,
+  enterpriseReplaySchemas?: Map<string, Record<string, unknown>>
 ) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
@@ -3261,6 +3281,7 @@ export function createSSETransformStreamWithLogger(
     customToolNames,
     requestToolIdentityMap,
     streamBufferBytes,
+    enterpriseReplaySchemas,
   });
 }
 

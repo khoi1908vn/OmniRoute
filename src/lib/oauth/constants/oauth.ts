@@ -238,6 +238,16 @@ export const ANTIGRAVITY_CONFIG = {
   fetchAvailableModelsEndpoint: getAntigravityFetchAvailableModelsUrls()[0],
 };
 
+// AGY Enterprise hosted-callback OAuth (public CLI client, PKCE S256).
+export const AGY_ENTERPRISE_CONFIG = {
+  clientId: resolvePublicCred("agy_enterprise_id", "AGY_ENTERPRISE_OAUTH_CLIENT_ID"),
+  clientSecret: resolvePublicCred("agy_enterprise_alt", "AGY_ENTERPRISE_OAUTH_CLIENT_SECRET"),
+  authorizeUrl: "https://accounts.google.com/o/oauth2/auth",
+  tokenUrl: "https://oauth2.googleapis.com/token",
+  redirectUri: "https://antigravity.google/oauth-callback",
+  scopes: [...ANTIGRAVITY_CONFIG.scopes, "openid"],
+};
+
 // Antigravity CLI (`agy`) OAuth Configuration.
 // `agy` is the standalone Antigravity CLI; it authenticates against the EXACT same Google
 // consumer-OAuth client as ANTIGRAVITY_CONFIG (the client_id was verified byte-for-byte

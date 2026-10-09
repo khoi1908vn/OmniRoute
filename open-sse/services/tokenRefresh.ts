@@ -46,7 +46,10 @@ import { refreshMuseCodeToken } from "./tokenRefresh/providers/museCode.ts";
 import { refreshGitLabDuoToken } from "./tokenRefresh/providers/gitlabDuo.ts";
 import { refreshClaudeOAuthToken } from "./tokenRefresh/providers/claudeOAuth.ts";
 import { refreshGoogleToken } from "./tokenRefresh/providers/google.ts";
-import { selectGoogleRefreshClient } from "./tokenRefresh/googleClientBinding.ts";
+import {
+  selectGoogleRefreshClient,
+  AgyEnterpriseOAuthReauthorizationError,
+} from "./tokenRefresh/googleClientBinding.ts";
 import {
   ensureAntigravityProjectAssigned,
   isUsableAntigravityProjectId,
@@ -351,7 +354,8 @@ async function _getAccessTokenInternal(provider, credentials, log, proxyConfig: 
 
     case "gemini":
     case "antigravity":
-    case "agy": {
+    case "agy":
+    case "agy-enterprise": {
       // Google binds each refresh token to the client that issued it. When
       // the operator overrides the client via env, connections authorized by
       // the built-in desktop client must not be refreshed against the custom
@@ -485,6 +489,7 @@ export function supportsTokenRefresh(provider) {
     "gemini",
     "antigravity",
     "agy",
+    "agy-enterprise",
     "claude",
     "codex",
     "openference",
@@ -543,6 +548,23 @@ export async function getAccessToken(
   if (!credentials || !credentials.refreshToken || typeof credentials.refreshToken !== "string") {
     log?.warn?.("TOKEN_REFRESH", `No valid refresh token available for provider: ${provider}`);
     return null;
+  }
+
+  // Check before mutex/rotation-cache reuse: legacy tokens cannot borrow a valid issuer's result.
+  if (provider === "agy-enterprise") {
+    try {
+      selectGoogleRefreshClient(
+        provider,
+        credentials.providerSpecificData?.oauthClient,
+        PROVIDERS[provider]
+      );
+    } catch (error) {
+      if (!(error instanceof AgyEnterpriseOAuthReauthorizationError)) throw error;
+      return {
+        error: "unrecoverable_refresh_error",
+        code: "agy_enterprise_oauth_reauthorization_required",
+      };
+    }
   }
 
   // If the caller did not pass onPersist explicitly, fall back to the active
@@ -634,12 +656,7 @@ export async function getAccessToken(
   // the legacy `connectionId`-less path would silently swallow the callback,
   // leaving DB rows out of sync with rotated tokens (Codex/OpenAI). We still
   // resolve the promise to all waiters with the refreshed credentials.
-  const refreshPromise = _getAccessTokenWithStalenessCheck(
-    provider,
-    credentials,
-    log,
-    proxyConfig
-  )
+  const refreshPromise = _getAccessTokenWithStalenessCheck(provider, credentials, log, proxyConfig)
     .then(async (result) => {
       if (result?.accessToken && effectiveOnPersist) {
         // #4038: same compare-and-swap guard as Layer 1 — skip the persist if a concurrent

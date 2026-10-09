@@ -28,6 +28,8 @@ import {
 } from "@/shared/network/outboundUrlGuardPolicy";
 import { errorResponse, sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 import { getStaticQoderModels } from "@omniroute/open-sse/services/qoderCli.ts";
+import { fetchAgyEnterpriseModels } from "@omniroute/open-sse/services/agyEnterprise.ts";
+import { runWithProxyContextOrDirect } from "@omniroute/open-sse/utils/proxyFetch.ts";
 import { deriveConfigFromRegistryModelsUrl } from "./discoveryConfig";
 import {
   buildTokenPlanCatalogRequest,
@@ -1650,6 +1652,31 @@ export async function GET(
       const models = data.data || data.models || [];
 
       return buildApiDiscoveryResponse(models);
+    }
+
+    if (provider === "agy-enterprise") {
+      const cachedResponse = maybeReturnCachedDiscovery();
+      if (cachedResponse) return cachedResponse;
+      const disabledResponse = maybeReturnAutoFetchDisabled();
+      if (disabledResponse) return disabledResponse;
+      try {
+        if (!accessToken) throw new Error("Enterprise OAuth token unavailable");
+        const models = await runWithProxyContextOrDirect(proxy, () =>
+          fetchAgyEnterpriseModels(accessToken, request.signal)
+        );
+        return await buildApiDiscoveryResponse(models);
+      } catch {
+        return (
+          buildDiscoveryFallbackResponse() ||
+          buildResponse({
+            provider,
+            connectionId,
+            models: [],
+            source: "local_catalog",
+            warning: "Enterprise model discovery unavailable. Retry later.",
+          })
+        );
+      }
     }
 
     if (provider === "antigravity" || provider === "agy") {

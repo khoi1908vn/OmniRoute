@@ -3,6 +3,21 @@
 // state, following the handlers submodule pattern (chatCore/, responseSanitizer/).
 import { normalizeOpenAICompatibleFinishReasonString } from "../../utils/finishReason.ts";
 import { stripObfuscationZeroWidth } from "../../utils/zeroWidth.ts";
+import { enterpriseGroundingText } from "../../translator/helpers/agyEnterpriseGrounding.ts";
+import {
+  buildAgyEnterpriseReplayNamespace,
+  captureAgyEnterpriseReplayParts,
+  captureAgyEnterpriseGroundedReplay,
+  type AgyEnterpriseReplayState,
+} from "../../services/geminiThoughtSignatureStore.ts";
+
+export type GeminiReplayContext = {
+  provider?: string;
+  connectionId?: string | null;
+  experience?: string;
+  history?: unknown;
+  schemas?: Map<string, Record<string, unknown>>;
+};
 
 type AccumulatedToolCall = {
   id: string;
@@ -16,8 +31,14 @@ type GeminiSSEAccumulator = {
   textContent: string;
   finishReason: string;
   usage: Record<string, unknown> | null;
+  sawTerminal: boolean;
   sawContent: boolean;
   toolCalls: AccumulatedToolCall[];
+  reasoningContent: string;
+  replay: AgyEnterpriseReplayState;
+  invalid: boolean;
+  enterpriseSearchQueries?: Set<string>;
+  enterpriseSearchSources?: Set<string>;
 };
 
 function stripZeroWidth(value: unknown): unknown {
@@ -76,15 +97,22 @@ function applyCandidatePart(part: Record<string, unknown>, acc: GeminiSSEAccumul
       type: "function",
       function: {
         name: fc.name,
-        arguments: JSON.stringify(stripZeroWidth(fc.args ?? {})),
+        arguments: JSON.stringify(
+          acc.replay.provider === "agy-enterprise" ? (fc.args ?? {}) : stripZeroWidth(fc.args ?? {})
+        ),
       },
     });
     return;
   }
 
-  if (typeof part.text !== "string" || part.thought === true) return;
+  if (typeof part.text !== "string") return;
+  if (part.thought === true) {
+    acc.reasoningContent += part.text;
+    return;
+  }
 
-  const textualToolCall = tryParseTextualToolCall(part.text);
+  const textualToolCall =
+    acc.replay.provider === "agy-enterprise" ? null : tryParseTextualToolCall(part.text);
   if (textualToolCall) {
     acc.toolCalls.push({
       id: `${textualToolCall.name}-${Date.now()}-${acc.toolCalls.length}`,
@@ -108,6 +136,13 @@ function applyCandidateContentParts(
 ): void {
   const content = candidate?.content as Record<string, unknown> | undefined;
   const parts = content?.parts;
+  captureAgyEnterpriseReplayParts(
+    acc.replay,
+    Array.isArray(parts) ? parts : [],
+    false,
+    undefined,
+    candidate?.groundingMetadata || candidate?.grounding_metadata
+  );
   if (!Array.isArray(parts)) return;
   for (const part of parts) {
     applyCandidatePart(part as Record<string, unknown>, acc);
@@ -120,6 +155,8 @@ function applyFinishReason(
   acc: GeminiSSEAccumulator
 ): void {
   if (!candidate?.finishReason) return;
+  acc.sawTerminal = true;
+  acc.replay.enterpriseFinishReason = candidate.finishReason;
   acc.finishReason = normalizeOpenAICompatibleFinishReasonString(
     String(candidate.finishReason).toLowerCase()
   );
@@ -127,13 +164,20 @@ function applyFinishReason(
 
 /** Extract usageMetadata into the OpenAI-shaped usage object, if present. */
 function applyUsageMetadata(parsed: Record<string, unknown>, acc: GeminiSSEAccumulator): void {
-  const response = parsed.response as Record<string, unknown> | undefined;
-  const um = response?.usageMetadata as Record<string, unknown> | undefined;
-  if (!um) return;
+  const response = (parsed.response || parsed) as Record<string, unknown>;
+  const um = response.usageMetadata as Record<string, unknown> | undefined;
+  if (!um || Object.keys(um).length === 0) return;
+  const prompt = Number(um.promptTokenCount) || 0;
+  const reasoning = Number(um.thoughtsTokenCount) || 0;
+  const completion = (Number(um.candidatesTokenCount) || 0) + reasoning;
   acc.usage = {
-    prompt_tokens: um.promptTokenCount || 0,
-    completion_tokens: um.candidatesTokenCount || 0,
-    total_tokens: um.totalTokenCount || 0,
+    prompt_tokens: prompt,
+    completion_tokens: completion,
+    total_tokens: Number(um.totalTokenCount) || prompt + completion,
+    ...(reasoning ? { completion_tokens_details: { reasoning_tokens: reasoning } } : {}),
+    ...(Number(um.cachedContentTokenCount)
+      ? { prompt_tokens_details: { cached_tokens: Number(um.cachedContentTokenCount) } }
+      : {}),
   };
 }
 
@@ -148,17 +192,31 @@ function applyGeminiSSEDataLine(payload: string, acc: GeminiSSEAccumulator): voi
       acc.sawContent = true;
     }
 
-    const response = parsed.response as Record<string, unknown> | undefined;
+    const response = (parsed.response || parsed) as Record<string, unknown>;
+    if (response.error || parsed.error) acc.invalid = true;
     const candidates = response?.candidates;
     const candidate = Array.isArray(candidates)
       ? (candidates[0] as Record<string, unknown> | undefined)
       : undefined;
 
+    if (!candidate && (response.promptFeedback || parsed.promptFeedback)) {
+      acc.sawTerminal = true;
+      acc.finishReason = "content_filter";
+    }
+
     applyCandidateContentParts(candidate, acc);
+    if (acc.replay.provider === "agy-enterprise") {
+      const searchText = enterpriseGroundingText(
+        candidate?.groundingMetadata || candidate?.grounding_metadata,
+        acc
+      );
+      acc.textContent += searchText;
+      captureAgyEnterpriseGroundedReplay(acc.replay, searchText, false);
+    }
     applyFinishReason(candidate, acc);
     applyUsageMetadata(parsed, acc);
   } catch {
-    // Ignore malformed lines
+    if (acc.replay.provider === "agy-enterprise") acc.invalid = true;
   }
 }
 
@@ -171,6 +229,7 @@ function buildChatCompletionFromAccumulator(
     role: "assistant",
     content: acc.textContent || null,
   };
+  if (acc.reasoningContent) message.reasoning_content = acc.reasoningContent;
 
   let finishReason = acc.finishReason;
   if (acc.toolCalls.length > 0) {
@@ -217,15 +276,31 @@ function buildChatCompletionFromAccumulator(
  */
 export function parseSSEToGeminiResponse(
   rawSSE: string,
-  fallbackModel: string
+  fallbackModel: string,
+  context: GeminiReplayContext = {}
 ): Record<string, unknown> | null {
   const lines = String(rawSSE || "").split("\n");
   const acc: GeminiSSEAccumulator = {
     textContent: "",
     finishReason: "stop",
     usage: null,
+    sawTerminal: false,
     sawContent: false,
     toolCalls: [],
+    reasoningContent: "",
+    replay: {
+      provider: context.provider,
+      enterpriseReplayHistory: context.history,
+      enterpriseReplaySchemas: context.schemas,
+      signatureNamespace:
+        context.provider === "agy-enterprise" && context.connectionId
+          ? buildAgyEnterpriseReplayNamespace(
+              context.connectionId,
+              context.experience || fallbackModel
+            )
+          : null,
+    },
+    invalid: false,
   };
 
   for (const line of lines) {
@@ -237,7 +312,12 @@ export function parseSSEToGeminiResponse(
     applyGeminiSSEDataLine(payload, acc);
   }
 
-  if (!acc.sawContent && acc.toolCalls.length === 0) return null;
+  if (!acc.sawContent && !acc.sawTerminal && !acc.usage && acc.toolCalls.length === 0) return null;
+  if (context.provider === "agy-enterprise") {
+    if (acc.invalid || !acc.sawTerminal) return null;
+    captureAgyEnterpriseReplayParts(acc.replay, [], true, acc.replay.enterpriseFinishReason);
+    captureAgyEnterpriseGroundedReplay(acc.replay, "", true);
+  }
 
   return buildChatCompletionFromAccumulator(acc, fallbackModel);
 }

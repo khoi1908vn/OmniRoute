@@ -24,7 +24,7 @@ const LEGIT_EMPTY_OPENAI_FINISH = new Set(["length", "tool_calls", "content_filt
 // turned valid answers into synthetic 502s that fed model lockout and drained
 // the reporter's whole connection pool. Providers outside this set keep the
 // guard unchanged, including on empty stop completions.
-const TRUSTED_EMPTY_STOP_PROVIDERS = new Set(["antigravity"]);
+const TRUSTED_EMPTY_STOP_PROVIDERS = new Set(["antigravity", "agy-enterprise"]);
 const NORMAL_STOP_OPENAI_FINISH = new Set(["stop"]);
 const NORMAL_STOP_CLAUDE_STOP = new Set(["end_turn"]);
 

@@ -1,0 +1,19 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [{ "thoughtSignature": "[NOT_TRANSCRIBED_FROM_SCREENSHOT]", "text": "" }],
+        "role": "model"
+      },
+      "finishReason": "STOP"
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 12140,
+    "candidatesTokenCount": 39,
+    "totalTokenCount": 12224,
+    "thoughtsTokenCount": 45
+  },
+  "modelVersion": "gemini-3.8-flash",
+  "responseId": "[NOT_TRANSCRIBED_FROM_SCREENSHOT]"
+}

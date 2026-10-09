@@ -87,6 +87,28 @@ test("detectMalformedNonStream still rejects a chat completion that stopped with
   assert.equal(detectMalformedNonStream(resp), "empty_choices");
 });
 
+test("detectMalformedNonStream allows an empty chat completion terminated by content_filter", () => {
+  const resp = {
+    choices: [{ finish_reason: "content_filter", message: { role: "assistant", content: null } }],
+  };
+  assert.equal(detectMalformedNonStream(resp), null);
+});
+
+test("detectMalformedNonStream rejects an empty filtered chat completion carrying an upstream error", () => {
+  const resp = {
+    choices: [{ finish_reason: "content_filter", message: { role: "assistant", content: null } }],
+    error: { code: 503, message: "Service unavailable" },
+  };
+  assert.equal(detectMalformedNonStream(resp), "empty_choices");
+});
+
+test("detectMalformedNonStream rejects an empty chat completion without a terminal reason", () => {
+  assert.equal(
+    detectMalformedNonStream({ choices: [{ message: { role: "assistant", content: null } }] }),
+    "empty_choices"
+  );
+});
+
 // finishReason.ts normalizes "max_tokens" to "length" before this function
 // sees it. If a caller bypasses that normalization, the raw "max_tokens"
 // spelling must still be rejected — only the normalized "length" is exempt.
@@ -274,6 +296,72 @@ test("detectMalformedNonStream returns null when reasoning_content present (reas
 test("detectMalformedNonStream returns 'empty_choices' for Responses API with empty output", () => {
   const body = { object: "response", output: [], status: "completed" };
   assert.equal(detectMalformedNonStream(body), "empty_choices");
+});
+
+test("detectMalformedNonStream allows empty Responses output with incomplete content_filter", () => {
+  const body = {
+    object: "response",
+    output: [],
+    status: "incomplete",
+    incomplete_details: { reason: "content_filter" },
+  };
+  assert.equal(detectMalformedNonStream(body), null);
+});
+
+test("detectMalformedNonStream allows empty Responses output with incomplete max_output_tokens", () => {
+  assert.equal(
+    detectMalformedNonStream({
+      object: "response",
+      output: [],
+      status: "incomplete",
+      incomplete_details: { reason: "max_output_tokens" },
+    }),
+    null
+  );
+});
+
+test("detectMalformedNonStream keeps empty Responses without a filtered terminal state malformed", () => {
+  for (const status of ["completed", "in_progress", "failed", undefined]) {
+    assert.equal(
+      detectMalformedNonStream({
+        object: "response",
+        output: [],
+        status,
+        incomplete_details: { reason: "content_filter" },
+      }),
+      "empty_choices",
+      `empty ${status ?? "missing status"} must not become a filtered completion`
+    );
+  }
+  for (const reason of ["max_tool_calls", undefined]) {
+    assert.equal(
+      detectMalformedNonStream({
+        object: "response",
+        output: [],
+        status: "incomplete",
+        incomplete_details: { reason },
+      }),
+      "empty_choices"
+    );
+  }
+});
+
+test("detectMalformedNonStream rejects filtered Responses with malformed output or upstream errors", () => {
+  const body = {
+    object: "response",
+    status: "incomplete",
+    incomplete_details: { reason: "content_filter" },
+  };
+  assert.equal(detectMalformedNonStream(body), "empty_choices");
+  assert.equal(detectMalformedNonStream({ ...body, output: null }), "empty_choices");
+  assert.equal(
+    detectMalformedNonStream({
+      ...body,
+      output: [],
+      error: { code: 503, message: "Service unavailable" },
+    }),
+    "empty_choices"
+  );
 });
 
 test("detectMalformedNonStream returns null for Responses API with text output", () => {

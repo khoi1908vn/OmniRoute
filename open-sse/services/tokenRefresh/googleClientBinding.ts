@@ -26,6 +26,15 @@ export const BUILTIN_GEMINI_CLIENT = {
 /** Marker recorded at authorize time; the literal id guards client rotation. */
 export type GoogleOauthClientMarker = "builtin" | `custom:${string}` | undefined;
 
+export class AgyEnterpriseOAuthReauthorizationError extends Error {
+  constructor() {
+    super(
+      "Enterprise issuing OAuth client is unavailable. Restore its client configuration or sign in again."
+    );
+    this.name = "AgyEnterpriseOAuthReauthorizationError";
+  }
+}
+
 function builtinClientFor(provider: string) {
   if (provider === "gemini") return BUILTIN_GEMINI_CLIENT;
   if (provider === "antigravity" || provider === "agy") return BUILTIN_ANTIGRAVITY_CLIENT;
@@ -65,6 +74,7 @@ export function selectGoogleRefreshClient(
   if (
     typeof oauthClientMarker === "string" &&
     oauthClientMarker.startsWith("custom:") &&
+    configuredClient?.clientId &&
     oauthClientMarker.slice("custom:".length) === configuredClient?.clientId &&
     configuredClient?.clientSecret
   ) {
@@ -73,6 +83,7 @@ export function selectGoogleRefreshClient(
       clientSecret: configuredClient.clientSecret,
     };
   }
+  if (provider === "agy-enterprise") throw new AgyEnterpriseOAuthReauthorizationError();
   const builtin = builtinClientFor(provider);
   return { clientId: builtin.clientId, clientSecret: builtin.clientSecret };
 }

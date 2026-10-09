@@ -1,0 +1,48 @@
+data: {"candidates": [{"content": {"parts": [{"thought": true,"text": "SANITIZED_TEXT_91"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"thought": true,"text": "SANITIZED_TEXT_92"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"thought": true,"text": "SANITIZED_TEXT_93"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"thought": true,"text": "SANITIZED_TEXT_94"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_95"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_96"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_97"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_98"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_99"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_100"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_101"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_102"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_103"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_104"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_105"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_106"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_107"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_108"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_109"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_110"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_111"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_112"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "SANITIZED_TEXT_113"}],"role": "model"}}],"usageMetadata": {},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+
+data: {"candidates": [{"content": {"parts": [{"thoughtSignature": "SYNTHETIC_SIGNATURE_6","text": ""}],"role": "model"},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 13682,"candidatesTokenCount": 448,"totalTokenCount": 15076,"thoughtsTokenCount": 946,"cachedContentTokenCount": 11179,"promptTokensDetails": [{"modality": "IMAGE","tokenCount": 1080},{"modality": "TEXT","tokenCount": 12602}],"cacheTokensDetails": [{"modality": "TEXT","tokenCount": 10297},{"modality": "IMAGE","tokenCount": 882}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 448}]},"modelVersion": "gemini-3.8-flash","responseId": "responseId_6"}
+

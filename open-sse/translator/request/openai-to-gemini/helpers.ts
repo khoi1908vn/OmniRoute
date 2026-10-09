@@ -163,6 +163,135 @@ export function buildHistoricalToolResultContext(name: string, response: unknown
 export type GeminiPart = Record<string, unknown>;
 export type GeminiContent = { role: string; parts: GeminiPart[] };
 
+// Enterprise accepts adjacent model call/result turns. Keep their boundaries and
+// split mixed client messages without moving text across a result.
+export function normalizeAgyEnterpriseContents(contents: GeminiContent[]): GeminiContent[] {
+  return contents.flatMap((content) => {
+    const output: GeminiContent[] = [];
+    for (const part of content.parts) {
+      const fn = part.functionResponse as { response?: Record<string, unknown> } | undefined;
+      const role = fn ? "model" : content.role;
+      const normalized = fn
+        ? {
+            ...part,
+            functionResponse: {
+              ...fn,
+              response: {
+                output: fn.response?.output ?? fn.response?.result,
+              },
+            },
+          }
+        : part;
+      const previous = output.at(-1);
+      const previousIsResult = Boolean(previous?.parts[0]?.functionResponse);
+      if (previous && previous.role === role && previousIsResult === Boolean(fn)) {
+        previous.parts.push(normalized);
+      } else {
+        output.push({ role, parts: [normalized] });
+      }
+    }
+    return output;
+  });
+}
+
+export function assertAgyEnterpriseToolChoice(choice: unknown): void {
+  if (
+    choice === undefined ||
+    choice === "auto" ||
+    (choice && typeof choice === "object" && (choice as { type?: string }).type === "auto")
+  )
+    return;
+  throw Object.assign(
+    new Error("Enterprise unverified tool mode: only automatic selection is supported"),
+    {
+      statusCode: 400,
+      errorType: "invalid_request_error",
+    }
+  );
+}
+
+export function missingAgyEnterpriseReplay(detail = "reason=unrecognized_history_layout"): never {
+  const recovery = detail.includes("reason=store_unavailable")
+    ? "retry the unchanged request after the replay store is available"
+    : detail.includes("reason=argument_mismatch") || detail.includes("reason=group_mismatch")
+      ? "restore the original call arguments and ordered tool group"
+      : "native continuation is unavailable; explicitly start fresh on the same connection and experience only after preserving completed actions and reconciling workspace state";
+  throw Object.assign(
+    new Error(
+      `Enterprise replay rejected (${detail}); ${recovery}; do not repeat completed tool actions blindly`
+    ),
+    {
+      statusCode: 400,
+      errorType: "invalid_request_error",
+    }
+  );
+}
+
+export function agyEnterpriseHistorySnapshot(contents: GeminiContent[]): string {
+  return JSON.stringify(contents.filter((content) => content.role === "model"));
+}
+
+// Check before client converters can discard unsupported content. Native parts
+// remain validated by the executor; media in tool results has no capture evidence.
+export function assertAgyEnterpriseClientMedia(body: Record<string, unknown>): void {
+  const reject = () => {
+    throw Object.assign(
+      new Error("Enterprise unverified media: use inline PNG user input and textual tool results"),
+      { statusCode: 400, errorType: "invalid_request_error" }
+    );
+  };
+  const check = (content: unknown, toolResult = false, role = "user") => {
+    if (content === null && role === "assistant" && !toolResult) return;
+    if (content === undefined || typeof content === "string") return;
+    if (!Array.isArray(content)) return reject();
+    for (const value of content) {
+      if (!value || typeof value !== "object") return reject();
+      const block = value as Record<string, unknown>;
+      const type = block.type;
+      if (
+        type === "text" ||
+        type === "input_text" ||
+        type === "output_text" ||
+        type === "thinking" ||
+        type === "tool_use"
+      )
+        continue;
+      if (type === "tool_result") {
+        check(block.content, true);
+        continue;
+      }
+      if (toolResult || role !== "user") return reject();
+      if (type === "image") {
+        const source = block.source as Record<string, unknown> | undefined;
+        if (
+          source?.type !== "base64" ||
+          source.media_type !== "image/png" ||
+          typeof source.data !== "string"
+        )
+          return reject();
+      } else if (type === "image_url" || type === "input_image") {
+        const url =
+          typeof block.image_url === "string"
+            ? block.image_url
+            : (block.image_url as { url?: unknown })?.url;
+        if (typeof url !== "string" || !url.startsWith("data:image/png;base64,")) return reject();
+      } else return reject();
+    }
+  };
+  if (Array.isArray(body.messages))
+    for (const value of body.messages) {
+      const msg = value as Record<string, unknown>;
+      check(msg.content, msg.role === "tool", String(msg.role));
+    }
+  if (Array.isArray(body.input))
+    for (const value of body.input) {
+      const item = value as Record<string, unknown>;
+      if (item.type === "function_call_output") check(item.output, true);
+      else if (item.content !== undefined) check(item.content, false, String(item.role || "user"));
+      else if (item.type !== "function_call" && item.type !== "reasoning") check([item]);
+    }
+}
+
 // Gemini-family APIs (incl. Antigravity / Vertex) reject a `contents[]` array that
 // has two adjacent entries with the same role:
 //   400 INVALID_ARGUMENT "Request contains consecutive messages with the same role".

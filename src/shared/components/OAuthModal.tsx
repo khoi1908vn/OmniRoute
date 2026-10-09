@@ -19,6 +19,10 @@ import {
 } from "@/lib/oauth/utils/codexSessionImport";
 import GheConfigStep from "@/shared/components/oauthModal/GheConfigStep";
 import GitlabDuoSetupStep from "@/shared/components/oauthModal/GitlabDuoSetupStep";
+import AgyEnterpriseLicenseStep, {
+  agyEnterpriseSetupAction,
+  type AgyEnterpriseSetup,
+} from "./oauthModal/AgyEnterpriseLicenseStep";
 import OAuthErrorStep from "@/shared/components/oauthModal/OAuthErrorStep";
 import OAuthWaitingStep from "@/shared/components/oauthModal/OAuthWaitingStep";
 import { parseGrokCliPasteToken } from "@/lib/oauth/utils/grokCliAuthJson";
@@ -163,6 +167,30 @@ export default function OAuthModal({
   // #8046 follow-up: structured diagnosis for the LAN-IP loopback mismatch, rendered
   // by its own step instead of as prose inside the generic red error step.
   const [loopbackHint, setLoopbackHint] = useState<PkceLoopbackMismatchHint | null>(null);
+  const [agyEnterpriseSetup, setAgyEnterpriseSetup] = useState<AgyEnterpriseSetup | null>(null);
+  const agyEnterpriseSavedRef = useRef(false);
+  const agyEnterpriseFlowRunRef = useRef(0);
+  const agyEnterpriseExchangeStateRef = useRef<string | null>(null);
+  const [agyEnterpriseExchanging, setAgyEnterpriseExchanging] = useState(false);
+  const agyEnterpriseTargetId = provider === "agy-enterprise" ? reauthConnection?.id : undefined;
+  const openRef = useRef(isOpen);
+  useEffect(() => {
+    openRef.current = isOpen;
+  }, [isOpen]);
+  useEffect(() => {
+    agyEnterpriseFlowRunRef.current += 1;
+    return () => {
+      agyEnterpriseFlowRunRef.current += 1;
+    };
+  }, [isOpen, provider, agyEnterpriseTargetId]);
+  const agyEnterpriseSaved = useCallback(() => {
+    if (!openRef.current || authData?.agyEnterpriseFlowRun !== agyEnterpriseFlowRunRef.current)
+      return;
+    if (agyEnterpriseSavedRef.current) return;
+    agyEnterpriseSavedRef.current = true;
+    setStep("success");
+    onSuccess?.();
+  }, [onSuccess, authData]);
 
   const supportsTokenPaste = TOKEN_PASTE_PROVIDERS.has(provider);
   const importTokenOnly = IMPORT_TOKEN_ONLY_PROVIDERS.has(provider);
@@ -219,8 +247,19 @@ export default function OAuthModal({
   const exchangeTokens = useCallback(
     async (code, state) => {
       if (!authData) return;
+      const flowRun = authData.agyEnterpriseFlowRun;
+      const staleAgyEnterpriseFlow = () =>
+        provider === "agy-enterprise" &&
+        (!openRef.current || flowRun !== agyEnterpriseFlowRunRef.current);
+      if (staleAgyEnterpriseFlow()) return;
+      const isAgyEnterprise = provider === "agy-enterprise";
+      if (isAgyEnterprise) {
+        if (agyEnterpriseExchangeStateRef.current === authData.state) return;
+        agyEnterpriseExchangeStateRef.current = authData.state;
+        setAgyEnterpriseExchanging(true);
+      }
       try {
-        if (!authData.redirectUri || !authData.codeVerifier) {
+        if (isAgyEnterprise ? !authData.state : !authData.redirectUri || !authData.codeVerifier) {
           throw new Error(t("errorSessionIncomplete"));
         }
 
@@ -229,13 +268,21 @@ export default function OAuthModal({
         const res = await fetch(`/api/oauth/${provider}/exchange`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            code,
-            redirectUri: authData.redirectUri,
-            connectionId: reauthConnection?.id,
-            codeVerifier: authData.codeVerifier,
-            ...(normalizedState ? { state: normalizedState } : {}),
-          }),
+          body: JSON.stringify(
+            isAgyEnterprise
+              ? {
+                  code,
+                  state: authData.state,
+                  connectionId: reauthConnection?.id,
+                }
+              : {
+                  code,
+                  redirectUri: authData.redirectUri,
+                  connectionId: reauthConnection?.id,
+                  codeVerifier: authData.codeVerifier,
+                  ...(normalizedState ? { state: normalizedState } : {}),
+                }
+          ),
         });
 
         const data = (await parseResponseBody(res)) as Record<string, unknown>;
@@ -259,9 +306,20 @@ export default function OAuthModal({
           throw new Error(details ? `${errMsg} (${details})` : errMsg);
         }
 
+        if (provider === "agy-enterprise") {
+          const setup = data as unknown as AgyEnterpriseSetup;
+          if (staleAgyEnterpriseFlow()) {
+            await agyEnterpriseSetupAction("cancel", setup.setupId);
+            return;
+          }
+          setAgyEnterpriseSetup(setup);
+          setStep("agy-enterprise-license");
+          return;
+        }
         setStep("success");
         onSuccess?.();
       } catch (err) {
+        if (staleAgyEnterpriseFlow()) return;
         // Provide actionable guidance for redirect_uri_mismatch on Google OAuth providers
         if (
           err.message?.toLowerCase().includes("redirect_uri_mismatch") &&
@@ -272,6 +330,11 @@ export default function OAuthModal({
           setError(err.message);
         }
         setStep("error");
+      } finally {
+        if (isAgyEnterprise && agyEnterpriseExchangeStateRef.current === authData.state) {
+          agyEnterpriseExchangeStateRef.current = null;
+          if (!staleAgyEnterpriseFlow()) setAgyEnterpriseExchanging(false);
+        }
       }
     },
     [authData, provider, onSuccess, reauthConnection, t]
@@ -384,6 +447,14 @@ export default function OAuthModal({
   const startOAuthFlow = useCallback(
     async (opts?: { grokBrowser?: boolean; manualLoopback?: boolean }) => {
       if (!provider) return;
+      const flowRun = ++agyEnterpriseFlowRunRef.current;
+      if (provider === "agy-enterprise") {
+        agyEnterpriseExchangeStateRef.current = null;
+        setAgyEnterpriseExchanging(false);
+        setAuthData(null);
+        setCallbackUrl("");
+        setStep("waiting");
+      }
       try {
         setError(null);
 
@@ -475,6 +546,7 @@ export default function OAuthModal({
         if (
           provider === "claude" ||
           provider === "cline" ||
+          provider === "agy-enterprise" ||
           (provider === "zed-hosted" && !isTrueLocalhost)
         ) {
           forceManual = true;
@@ -561,7 +633,9 @@ export default function OAuthModal({
         // - Other providers on remote: use actual origin (supports PUBLIC_URL env var)
         // - Localhost: use localhost:port
         let redirectUri: string;
-        if (provider === "codex" || provider === "openai") {
+        if (provider === "agy-enterprise") {
+          redirectUri = "https://antigravity.google/oauth-callback";
+        } else if (provider === "codex" || provider === "openai") {
           redirectUri = "http://localhost:1455/auth/callback";
         } else if (provider === "xai-oauth" || provider === "grok-cli") {
           // Fixed native-app loopback callback, distinct ports so both can run concurrently (#7013).
@@ -595,6 +669,11 @@ export default function OAuthModal({
           `/api/oauth/${provider}/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`
         );
         const data = (await parseResponseBody(res)) as Record<string, unknown>;
+        if (
+          provider === "agy-enterprise" &&
+          (!openRef.current || flowRun !== agyEnterpriseFlowRunRef.current)
+        )
+          return;
         if (!res.ok) {
           const errMsg = getErrorMessage(data, res.status, t("errorAuthorizationFailed"));
           throw new Error(errMsg);
@@ -604,7 +683,11 @@ export default function OAuthModal({
           throw new Error(errorMessageFromBody(data, t("errorBrowserUnavailable")));
         }
 
-        setAuthData({ ...data, redirectUri: data.redirectUri || redirectUri });
+        setAuthData({
+          ...data,
+          redirectUri: data.redirectUri || redirectUri,
+          agyEnterpriseFlowRun: flowRun,
+        });
 
         // For non-true-localhost (LAN IPs, remote) or manual fallback: use manual input mode (user pastes callback URL)
         if (!isTrueLocalhost || forceManual) {
@@ -621,6 +704,11 @@ export default function OAuthModal({
           }
         }
       } catch (err) {
+        if (
+          provider === "agy-enterprise" &&
+          (!openRef.current || flowRun !== agyEnterpriseFlowRunRef.current)
+        )
+          return;
         setError(err.message);
         setStep("error");
       }
@@ -667,7 +755,7 @@ export default function OAuthModal({
   useEffect(() => {
     deviceFlowRunRef.current += 1;
     flowStartedRef.current = false;
-  }, [provider]);
+  }, [provider, agyEnterpriseTargetId]);
 
   // Same split when the modal closes: state reset during render, ref
   // invalidation in a ref-only effect.
@@ -698,7 +786,10 @@ export default function OAuthModal({
   // moved from the old effect into this render-time adjustment (react.dev
   // "You Might Not Need an Effect"); the flow itself starts in the effect below.
   const [prevStartKey, setPrevStartKey] = useState<string | null>(null);
-  const startKey = isOpen && provider ? String(provider) : null;
+  const startKey =
+    isOpen && provider
+      ? `${provider}${provider === "agy-enterprise" ? `:${agyEnterpriseTargetId || "new"}` : ""}`
+      : null;
   if (startKey !== prevStartKey) {
     setPrevStartKey(startKey);
     if (startKey) {
@@ -707,6 +798,7 @@ export default function OAuthModal({
       setAuthData(null);
       setCallbackUrl("");
       setError(null);
+      setAgyEnterpriseSetup(null);
       setIsDeviceCode(false);
       setDeviceData(null);
       setPolling(false);
@@ -716,6 +808,10 @@ export default function OAuthModal({
       }
     }
   }
+
+  useEffect(() => {
+    if (startKey) agyEnterpriseSavedRef.current = false;
+  }, [startKey]);
 
   useEffect(() => {
     if (!isOpen || !provider || flowStartedRef.current) return;
@@ -735,7 +831,7 @@ export default function OAuthModal({
 
   // Listen for OAuth callback via multiple methods
   useEffect(() => {
-    if (!authData) return;
+    if (!isOpen || !authData || provider === "agy-enterprise") return;
     callbackProcessedRef.current = false; // Reset when authData changes
 
     // Handler for callback data - only process once
@@ -840,7 +936,7 @@ export default function OAuthModal({
       window.removeEventListener("storage", handleStorage);
       if (channel) channel.close();
     };
-  }, [authData, exchangeTokens, provider, t]);
+  }, [isOpen, authData, exchangeTokens, provider, t]);
 
   // Fix #344: Detect when OAuth popup is closed without completing authorization
   // Some providers (like Qoder) redirect to their own chat UI instead of sending a callback,
@@ -890,6 +986,34 @@ export default function OAuthModal({
   const handleManualSubmit = async () => {
     try {
       setError(null);
+      if (provider === "agy-enterprise") {
+        if (!authData?.state) throw new Error(t("errorSessionNotInitialized"));
+        const input = callbackUrl.trim();
+        let url: URL | undefined;
+        try {
+          url = new URL(input);
+        } catch {
+          /* Raw authorization codes have no URL scheme. */
+        }
+        let code = input;
+        if (url) {
+          if (
+            url.origin !== "https://antigravity.google" ||
+            url.pathname !== "/oauth-callback" ||
+            url.username ||
+            url.password
+          )
+            throw new Error(t("errorAgyEnterpriseCallback"));
+          if (url.searchParams.get("state") !== authData.state)
+            throw new Error(t("errorStateMismatch"));
+          code = url.searchParams.get("code") || "";
+        } else if (/^[a-z][a-z0-9+.-]*:|^\/\/|#|\s/i.test(input)) {
+          throw new Error(t("errorAgyEnterpriseCallback"));
+        }
+        if (!code) throw new Error(t("errorNoAuthorizationCode"));
+        await exchangeTokens(code, authData.state);
+        return;
+      }
       if (isCredentialBlob(callbackUrl)) {
         await submitCredentialBlob(provider, callbackUrl, reauthConnection, setStep, onSuccess);
         return;
@@ -977,10 +1101,26 @@ export default function OAuthModal({
     }
   };
 
-  const handleClose = useCallback(() => {
+  const handleClose = useCallback(async () => {
+    if (agyEnterpriseSetup && !agyEnterpriseSavedRef.current) {
+      try {
+        const result = await agyEnterpriseSetupAction("cancel", agyEnterpriseSetup.setupId);
+        if (result.status === "completed") agyEnterpriseSaved();
+      } catch (error) {
+        // Expired tickets cannot commit. Other failures retain the setup for retry.
+        const message =
+          error instanceof Error ? error.message : "Could not cancel Enterprise setup";
+        if (!/expired|cancelled|unavailable/i.test(message)) {
+          setError(message);
+          return;
+        }
+      }
+    }
+    agyEnterpriseFlowRunRef.current += 1;
+    openRef.current = false;
     invalidateDeviceFlow();
     onClose();
-  }, [invalidateDeviceFlow, onClose]);
+  }, [invalidateDeviceFlow, onClose, agyEnterpriseSetup, agyEnterpriseSaved]);
 
   const handlePasteMode = useCallback(() => {
     invalidateDeviceFlow();
@@ -1011,6 +1151,23 @@ export default function OAuthModal({
       size="lg"
     >
       <div className="flex flex-col gap-4">
+        {step === "agy-enterprise-license" && agyEnterpriseSetup && (
+          <>
+            {error && (
+              <p role="alert" className="text-red-500">
+                {error}
+              </p>
+            )}
+            <AgyEnterpriseLicenseStep
+              setup={agyEnterpriseSetup}
+              onSaved={agyEnterpriseSaved}
+              onSignInAgain={() => {
+                setAgyEnterpriseSetup(null);
+                startOAuthFlow();
+              }}
+            />
+          </>
+        )}
         {/* Browser login with an optional token-import fallback. grok-cli adds a
             third "Device Code" tab since it keeps BOTH the device_code flow
             (#7358, default) and the browser PKCE login (#7013) alongside the
@@ -1135,7 +1292,10 @@ export default function OAuthModal({
                 authUrl={typeof authData?.authUrl === "string" ? authData.authUrl : ""}
                 callbackUrl={callbackUrl}
                 placeholderUrl={placeholderUrl}
-                canSubmit={Boolean(callbackUrl && (authData || isCredentialBlob(callbackUrl)))}
+                canSubmit={
+                  Boolean(callbackUrl && (authData || isCredentialBlob(callbackUrl))) &&
+                  !agyEnterpriseExchanging
+                }
                 onCallbackUrlChange={setCallbackUrl}
                 onSubmit={handleManualSubmit}
                 onClose={handleClose}

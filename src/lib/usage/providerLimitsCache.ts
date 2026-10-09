@@ -1,6 +1,7 @@
 import type { ProviderLimitsCacheEntry } from "@/lib/db/providerLimits";
 import { sanitizeProviderBillingStatus } from "@/shared/utils/providerBilling";
 import { GROK_BUILD_ADDITIONAL_CREDITS_URL } from "@/shared/utils/grokBilling";
+import { agyEnterpriseQuotaObservationsSchema } from "@omniroute/open-sse/utils/agyEnterprise.ts";
 
 const GROK_CLI_PROVIDER = "grok-cli";
 const GLM_RESET_CARD_PROVIDERS = new Set(["glm", "glm-cn", "glmt", "zai"]);
@@ -14,6 +15,7 @@ function isRecord(value: unknown): value is JsonRecord {
 function hasUsableCachedData(cache: ProviderLimitsCacheEntry | null | undefined): boolean {
   return Boolean(
     cache?.billing ||
+    cache?.quotaObservations ||
     (cache?.quotas && Object.keys(cache.quotas).length > 0) ||
     (cache?.modelQuotas && Object.keys(cache.modelQuotas).length > 0)
   );
@@ -25,6 +27,7 @@ export function toProviderLimitsCacheEntry(
   fetchedAt = new Date().toISOString()
 ): ProviderLimitsCacheEntry {
   const bankedResetCredits = Number(usage.bankedResetCredits);
+  const observations = agyEnterpriseQuotaObservationsSchema.safeParse(usage.quotaObservations);
   return {
     quotas: isRecord(usage.quotas) ? usage.quotas : null,
     ...(isRecord(usage.modelQuotas) ? { modelQuotas: usage.modelQuotas } : {}),
@@ -34,6 +37,7 @@ export function toProviderLimitsCacheEntry(
     source,
     bankedResetCredits: Number.isFinite(bankedResetCredits) ? bankedResetCredits : undefined,
     billing: sanitizeProviderBillingStatus(usage.billing),
+    ...(observations.success ? { quotaObservations: observations.data } : {}),
   };
 }
 

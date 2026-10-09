@@ -220,7 +220,19 @@ export function detectMalformedNonStream(
         // function_call / other structural items count
         return Boolean(it.type);
       });
-    if (!hasOutput) return "empty_choices";
+    if (!hasOutput) {
+      const incompleteDetails = body.incomplete_details as Record<string, unknown> | undefined;
+      // Filtered and token-budget terminations can have no output; upstream errors still win.
+      if (
+        Array.isArray(output) &&
+        body.status === "incomplete" &&
+        (incompleteDetails?.reason === "content_filter" ||
+          incompleteDetails?.reason === "max_output_tokens") &&
+        !body.error
+      )
+        return null;
+      return "empty_choices";
+    }
     const status = typeof body.status === "string" ? body.status : "";
     // OpenAI Responses spec: "incomplete" (budget exhausted — max_output_tokens
     // / max_tool_calls) and "cancelled" are legal terminal states, not a body
@@ -371,6 +383,13 @@ export function detectMalformedNonStream(
       return c?.finish_reason === "length";
     });
     if (truncated) return null;
+    if (
+      !body.error &&
+      choices.some(
+        (choice) => (choice as Record<string, unknown>)?.finish_reason === "content_filter"
+      )
+    )
+      return null;
     return "empty_choices";
   }
 

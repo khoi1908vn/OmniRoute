@@ -344,13 +344,28 @@ export function OAuthManualInputPanel({
   return (
     <>
       <div className="space-y-4">
-        <OAuthRemoteAccessNotices
-          isGoogleOAuth={isGoogleOAuth}
-          isTrueLocalhost={isTrueLocalhost}
-          googleHint={googleHint}
-        />
+        {provider !== "agy-enterprise" && (
+          <OAuthRemoteAccessNotices
+            isGoogleOAuth={isGoogleOAuth}
+            isTrueLocalhost={isTrueLocalhost}
+            googleHint={googleHint}
+          />
+        )}
         <div>
-          <p className="text-sm font-medium mb-2">{t("step1OpenUrl")}</p>
+          <p className="text-sm font-medium mb-2">
+            {provider === "agy-enterprise" ? (
+              <a
+                href={authUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary hover:underline"
+              >
+                {t("step1OpenUrl")}
+              </a>
+            ) : (
+              t("step1OpenUrl")
+            )}
+          </p>
           <div className="flex gap-2">
             <Input value={authUrl} readOnly className="flex-1 font-mono text-xs" />
             <Button
@@ -365,27 +380,36 @@ export function OAuthManualInputPanel({
         <div>
           <p className="text-sm font-medium mb-2">{t("step2PasteCallback")}</p>
           <p className="text-xs text-text-muted mb-2">
-            {t.rich("step2Hint", {
-              code: (chunks) => <code className="font-mono">{chunks}</code>,
-            })}
+            {provider === "agy-enterprise"
+              ? t("agyEnterpriseCodePasteHint")
+              : t.rich("step2Hint", {
+                  code: (chunks) => <code className="font-mono">{chunks}</code>,
+                })}
           </p>
           {provider === "zed-hosted" && (
             <p className="text-xs text-amber-500 mb-2">
               After signing in, Zed redirects to a local address like{" "}
-              <code className="font-mono">http://127.0.0.1:&lt;port&gt;/?user_id=...</code> which the
-              browser may show as unreachable — that is expected. Copy the FULL URL from the
+              <code className="font-mono">http://127.0.0.1:&lt;port&gt;/?user_id=...</code> which
+              the browser may show as unreachable — that is expected. Copy the FULL URL from the
               browser address bar (the access token is inside it) and paste it above.
             </p>
           )}
           <Input
             value={callbackUrl}
+            aria-label={
+              provider === "agy-enterprise"
+                ? t("authorizationCodePlaceholder")
+                : t("step2PasteCallback")
+            }
             onChange={(event) => onCallbackUrlChange(event.target.value)}
             placeholder={
-              provider === "claude" || provider === "cline"
-                ? "code#state or /callback?code=..."
-                : provider === "zed-hosted"
-                  ? "http://127.0.0.1:<port>/?user_id=...&access_token=..."
-                  : placeholderUrl
+              provider === "agy-enterprise"
+                ? t("authorizationCodePlaceholder")
+                : provider === "claude" || provider === "cline"
+                  ? "code#state or /callback?code=..."
+                  : provider === "zed-hosted"
+                    ? "http://127.0.0.1:<port>/?user_id=...&access_token=..."
+                    : placeholderUrl
             }
             className="font-mono text-xs"
           />

@@ -1,5 +1,9 @@
 import { FORMATS } from "./formats.ts";
 import {
+  assertAgyEnterpriseClientMedia,
+  assertAgyEnterpriseToolChoice,
+} from "./request/openai-to-gemini/helpers.ts";
+import {
   ensureToolCallIds,
   fixMissingToolResponses,
   stripOrphanedToolResults,
@@ -358,6 +362,10 @@ export function translateRequest(
   }
 ) {
   let result = body;
+  if (provider === "agy-enterprise") {
+    assertAgyEnterpriseClientMedia(body);
+    assertAgyEnterpriseToolChoice(body.tool_choice);
+  }
   const use9CharId = options?.normalizeToolCallId === true;
   const preserveDeveloperRole = options?.preserveDeveloperRole;
   const connectionCacheOverride = resolveConnectionCacheOverride(
