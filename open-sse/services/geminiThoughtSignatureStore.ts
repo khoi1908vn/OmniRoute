@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { appendFileSync } from "node:fs";
 import { z } from "zod";
 import { getDbInstance } from "../../src/lib/db/core.ts";
 
@@ -90,19 +89,6 @@ function readEnterpriseRow(key: string): EnterpriseReplayRow | undefined {
   return getDbInstance()
     .prepare("SELECT key, value FROM key_value WHERE namespace = ? AND key = ?")
     .get(NAMESPACE, key) as EnterpriseReplayRow | undefined;
-}
-
-function captureEnterpriseReplayHistory(event: string, namespace: string, history: unknown): void {
-  const diagnosticFile = process.env.ENTERPRISE_REPLAY_RAW_DIAGNOSTIC_FILE;
-  if (!diagnosticFile) return;
-  try {
-    appendFileSync(
-      diagnosticFile,
-      `${JSON.stringify({ event, at: new Date().toISOString(), namespace, history })}\n`
-    );
-  } catch {
-    // Private diagnostic capture must never affect replay behavior.
-  }
 }
 
 function findEnterpriseCallOrigins(namespace: string, id: string): EnterpriseReplayRow[] {
@@ -483,6 +469,37 @@ function enterpriseCallsDigest(calls: EnterpriseCall[]): string {
     .digest("hex");
 }
 
+const enterpriseTextOriginSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("native-context-text"),
+      signature: z.string().min(1),
+      previousHistoryDigest: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("native-unsigned-context-text"),
+      previousHistoryDigest: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("native-teammate-text"),
+      signature: z.string().min(1),
+      previousHistoryDigest: z.string().min(1),
+      teammateMessage: z.literal(true),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("native-teammate-unsigned-text"),
+      previousHistoryDigest: z.string().min(1),
+      teammateMessage: z.literal(true),
+    })
+    .strict(),
+]);
+
 export function getAgyEnterpriseTextReplay(
   namespace: string,
   text: string,
@@ -501,76 +518,16 @@ export function getAgyEnterpriseTextReplay(
       if (origins.length !== 1) return null;
       const origin = parsePersistedEntry(origins[0].value);
       if (!origin || origin.entry.signature === AMBIGUOUS_TEXT) return null;
-      const signatureRecord = z
-        .object({
-          kind: z.literal("native-teammate-text"),
-          signature: z.string().min(1),
-          previousHistoryDigest: z.string().min(1),
-          teammateMessage: z.literal(true),
-        })
-        .strict()
-        .safeParse(JSON.parse(origin.entry.signature));
-      const contextSignatureRecord = z
-        .object({
-          kind: z.literal("native-context-text"),
-          signature: z.string().min(1),
-          previousHistoryDigest: z.string().min(1),
-        })
-        .strict()
-        .safeParse(JSON.parse(origin.entry.signature));
-      const unsignedRecord = z
-        .object({
-          kind: z.literal("native-teammate-unsigned-text"),
-          previousHistoryDigest: z.string().min(1),
-          teammateMessage: z.literal(true),
-        })
-        .strict()
-        .safeParse(JSON.parse(origin.entry.signature));
-      const contextUnsignedRecord = z
-        .object({
-          kind: z.literal("native-unsigned-context-text"),
-          previousHistoryDigest: z.string().min(1),
-        })
-        .strict()
-        .safeParse(JSON.parse(origin.entry.signature));
+      const record = enterpriseTextOriginSchema.safeParse(JSON.parse(origin.entry.signature));
       const contents = Array.isArray(history) ? history : [];
-      const previousHistoryDigest = signatureRecord.success
-        ? signatureRecord.data.previousHistoryDigest
-        : contextSignatureRecord.success
-          ? contextSignatureRecord.data.previousHistoryDigest
-          : unsignedRecord.success
-            ? unsignedRecord.data.previousHistoryDigest
-            : contextUnsignedRecord.success
-              ? contextUnsignedRecord.data.previousHistoryDigest
-              : null;
       if (
-        !previousHistoryDigest ||
-        previousHistoryDigest !== agyEnterpriseReplayHistoryDigest(contents.slice(0, -1))
+        !record.success ||
+        record.data.previousHistoryDigest !==
+          agyEnterpriseReplayHistoryDigest(contents.slice(0, -1))
       )
         return null;
-      const diagnosticFile = process.env.ENTERPRISE_REPLAY_DIAGNOSTIC_FILE;
-      if (diagnosticFile) {
-        try {
-          appendFileSync(
-            diagnosticFile,
-            `${JSON.stringify({
-              event: "teammate-text-origin-recovered",
-              at: new Date().toISOString(),
-              namespace,
-              textHash: createHash("sha256").update(text).digest("hex"),
-              historyDigest: agyEnterpriseReplayHistoryDigest(contents),
-              previousHistoryDigest,
-              unsigned: unsignedRecord.success || contextUnsignedRecord.success,
-            })}\n`
-          );
-        } catch {
-          // Diagnostic capture must never affect replay behavior.
-        }
-      }
-      if (unsignedRecord.success || contextUnsignedRecord.success) return {};
-      if (signatureRecord.success) value = signatureRecord.data.signature;
-      else if (contextSignatureRecord.success) value = contextSignatureRecord.data.signature;
-      else return null;
+      if (!("signature" in record.data)) return {};
+      value = record.data.signature;
     } catch {
       return null;
     }
@@ -598,47 +555,19 @@ export function getAgyEnterpriseTextReplay(
   if (!value) return null;
   if (!value.startsWith("{")) return { thoughtSignature: value };
   try {
-    const teammateUnsignedText = z
-      .object({
-        kind: z.literal("native-teammate-unsigned-text"),
-        previousHistoryDigest: z.string().min(1),
-        teammateMessage: z.literal(true),
-      })
-      .strict()
-      .safeParse(JSON.parse(value));
-    if (teammateUnsignedText.success) return calls.length === 0 ? {} : null;
-    const teammateText = z
-      .object({
-        kind: z.literal("native-teammate-text"),
-        signature: z.string().min(1),
-        previousHistoryDigest: z.string().min(1),
-        teammateMessage: z.literal(true),
-      })
-      .strict()
-      .safeParse(JSON.parse(value));
-    if (teammateText.success) return { thoughtSignature: teammateText.data.signature };
-    const contextText = z
-      .object({
-        kind: z.literal("native-context-text"),
-        signature: z.string().min(1),
-        previousHistoryDigest: z.string().min(1),
-      })
-      .strict()
-      .safeParse(JSON.parse(value));
-    if (contextText.success) return { thoughtSignature: contextText.data.signature };
+    const contextText = enterpriseTextOriginSchema.safeParse(JSON.parse(value));
+    if (contextText.success) {
+      return "signature" in contextText.data
+        ? { thoughtSignature: contextText.data.signature }
+        : calls.length === 0
+          ? {}
+          : null;
+    }
     const unsigned = z
       .object({ kind: z.literal("native-unsigned-text") })
       .strict()
       .safeParse(JSON.parse(value));
     if (unsigned.success) return calls.length === 0 ? {} : null;
-    const contextUnsignedText = z
-      .object({
-        kind: z.literal("native-unsigned-context-text"),
-        previousHistoryDigest: z.string().min(1),
-      })
-      .strict()
-      .safeParse(JSON.parse(value));
-    if (contextUnsignedText.success) return calls.length === 0 ? {} : null;
     const grounded = z
       .object({
         kind: z.literal("native-grounded-text"),
@@ -782,44 +711,6 @@ export function describeAgyEnterpriseReplayFailure(
   resolution?: EnterpriseCallReplayResolution
 ): string {
   const key = enterpriseReplayKey(namespace, kind, identity, history);
-  if (kind === "text") captureEnterpriseReplayHistory("replay-failure", namespace, history);
-  const diagnosticFile = process.env.ENTERPRISE_REPLAY_DIAGNOSTIC_FILE;
-  if (diagnosticFile && kind === "text") {
-    try {
-      const contents = Array.isArray(history) ? history : [];
-      appendFileSync(
-        diagnosticFile,
-        `${JSON.stringify({
-          event: "replay-failure",
-          at: new Date().toISOString(),
-          pid: process.pid,
-          historyDigest: agyEnterpriseReplayHistoryDigest(contents),
-          identityChars: identity.length,
-          identityHash: createHash("sha256").update(identity).digest("hex"),
-          history: contents.map((content) => ({
-            role: content?.role,
-            parts: Array.isArray(content?.parts)
-              ? content.parts.map((part) => ({
-                  keys: Object.keys(part).sort(),
-                  textChars: typeof part.text === "string" ? part.text.length : undefined,
-                  textHash:
-                    typeof part.text === "string"
-                      ? createHash("sha256").update(part.text).digest("hex")
-                      : undefined,
-                  thought: part.thought === true,
-                  signatureHash:
-                    typeof part.thoughtSignature === "string"
-                      ? createHash("sha256").update(part.thoughtSignature).digest("hex")
-                      : undefined,
-                }))
-              : [],
-          })),
-        })}\n`
-      );
-    } catch {
-      // Diagnostic capture must never affect request rejection.
-    }
-  }
   let reason = "missing";
   let originRecords = 0;
   if (resolution && !resolution.ok) {
@@ -961,55 +852,6 @@ export function captureAgyEnterpriseReplayParts(
     }
   }
   if (!terminal) return;
-  captureEnterpriseReplayHistory(
-    "response-origin",
-    state.signatureNamespace,
-    state.enterpriseReplayHistory
-  );
-  const diagnosticFile = process.env.ENTERPRISE_REPLAY_DIAGNOSTIC_FILE;
-  if (diagnosticFile) {
-    try {
-      const history = Array.isArray(state.enterpriseReplayHistory)
-        ? state.enterpriseReplayHistory
-        : [];
-      appendFileSync(
-        diagnosticFile,
-        `${JSON.stringify({
-          at: new Date().toISOString(),
-          pid: process.pid,
-          namespace: state.signatureNamespace,
-          historyDigest: agyEnterpriseReplayHistoryDigest(history),
-          history: history.map((content) => ({
-            role: content?.role,
-            parts: Array.isArray(content?.parts)
-              ? content.parts.map((part) => ({
-                  keys: Object.keys(part).sort(),
-                  textChars: typeof part.text === "string" ? part.text.length : undefined,
-                  textHash:
-                    typeof part.text === "string"
-                      ? createHash("sha256").update(part.text).digest("hex")
-                      : undefined,
-                  thought: part.thought === true,
-                  signatureHash:
-                    typeof part.thoughtSignature === "string"
-                      ? createHash("sha256").update(part.thoughtSignature).digest("hex")
-                      : undefined,
-                }))
-              : [],
-          })),
-          visibleTextChars: state.enterpriseVisibleText?.length ?? 0,
-          visibleTextHash: state.enterpriseVisibleText
-            ? createHash("sha256").update(state.enterpriseVisibleText).digest("hex")
-            : null,
-          partCount: parts.length,
-          partKeys: parts.map((part) => Object.keys(part).sort()),
-          finishReason: finishReason ?? null,
-        })}\n`
-      );
-    } catch {
-      // Diagnostic capture must never affect provider streaming.
-    }
-  }
   // STOP text can be unsigned. Retain earlier context so a teammate wakeup can
   // rebuild the final user turn without inventing a signature.
   if (
