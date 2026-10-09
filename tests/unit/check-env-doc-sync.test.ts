@@ -219,6 +219,21 @@ test("repository contract is in sync (live data)", () => {
   assert.equal(result.ok, true);
 });
 
+test("runEnvDocSync: shipped allowlist ignores local Enterprise capture knobs", () => {
+  const inputs = {
+    envExampleText: "",
+    envDocText: "",
+    codeVars: new Set([
+      "ENTERPRISE_NATIVE_CAPTURE_DIR",
+      "ENTERPRISE_REPLAY_DIAGNOSTIC_FILE",
+      "ENTERPRISE_REPLAY_RAW_DIAGNOSTIC_FILE",
+    ]),
+  };
+  assert.equal(runEnvDocSync({ ...inputs, ignore: new Set() }).ok, false);
+  assert.deepEqual(runEnvDocSync(inputs).problems.codeMissingEnv, []);
+  assert.equal(runEnvDocSync(inputs).ok, true);
+});
+
 // ─── CLI entry guard ────────────────────────────────────────────────────────
 
 test("isMainEntry: absolute argv[1] matches the module URL (normal CLI invocation)", () => {

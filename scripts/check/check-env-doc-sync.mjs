@@ -54,6 +54,10 @@ const IGNORE_FROM_CODE = new Set([
   // Quality-gate harness knobs (optional cache/report paths for CI scripts — not product config).
   "ESLINT_RESULTS_JSON",
   "COMPLEXITY_ESLINT_REPORT",
+  // Local Enterprise replay investigation captures — disabled by default, not product config.
+  "ENTERPRISE_NATIVE_CAPTURE_DIR",
+  "ENTERPRISE_REPLAY_DIAGNOSTIC_FILE",
+  "ENTERPRISE_REPLAY_RAW_DIAGNOSTIC_FILE",
   // Agent environment / system execution paths.
   "PROJECT_ROOT",
   "ARTIFACTS_DIR",
