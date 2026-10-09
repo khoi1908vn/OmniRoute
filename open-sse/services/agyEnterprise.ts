@@ -9,7 +9,7 @@ import {
 } from "@omniroute/open-sse/utils/agyEnterprise.ts";
 import { antigravityCliUserAgent } from "./antigravityHeaders.ts";
 
-export const agyEnterpriseQuotaSummarySchema = z.object({
+const agyEnterpriseQuotaSummarySchema = z.object({
   groups: z
     .array(
       z.object({
@@ -24,7 +24,7 @@ export const agyEnterpriseQuotaSummarySchema = z.object({
     )
     .max(100),
 });
-export type AgyEnterpriseQuotaSummary = z.infer<typeof agyEnterpriseQuotaSummarySchema>;
+type AgyEnterpriseQuotaSummary = z.infer<typeof agyEnterpriseQuotaSummarySchema>;
 
 export async function fetchAgyEnterpriseQuotaSummary(
   accessToken: string,
@@ -59,9 +59,8 @@ export async function fetchAgyEnterpriseModels(
   });
 }
 
-export const AGY_ENTERPRISE_US_HOST = "https://businessaicode.us.rep.googleapis.com";
 const AGY_ENTERPRISE_HOSTS: Record<AgyEnterpriseLocation, string> = {
-  us: AGY_ENTERPRISE_US_HOST,
+  us: "https://businessaicode.us.rep.googleapis.com",
   eu: "https://businessaicode.eu.rep.googleapis.com",
 };
 export function agyEnterpriseResource(context: AgyEnterpriseContext): string {

@@ -6,12 +6,7 @@ import { buildAntigravityAuthUrl } from "./antigravity";
 export const agyEnterprise = {
   config: AGY_ENTERPRISE_CONFIG,
   flowType: "authorization_code_pkce" as const,
-  buildAuthUrl: (
-    config: typeof AGY_ENTERPRISE_CONFIG,
-    redirectUri: string,
-    state: string,
-    challenge: string
-  ) => buildAntigravityAuthUrl(config, redirectUri, state, challenge),
+  buildAuthUrl: buildAntigravityAuthUrl,
   exchangeToken: async (
     config: typeof AGY_ENTERPRISE_CONFIG,
     code: string,

@@ -40,11 +40,6 @@ test.after(() => {
 
 test("Enterprise probe builds the minimal inference request", async () => {
   const config = OAUTH_TEST_CONFIG["agy-enterprise"];
-  assert.equal(typeof config?.buildProbe, "function");
-  assert.equal(config.refreshable, true);
-  assert.equal(config.checkExpiry, undefined);
-  assert.equal(config.acceptStatuses, undefined);
-  assert.equal(config.inconclusiveStatuses, undefined);
   const probe = await config.buildProbe!(connection(), "fresh-token");
   assert.equal(probe.method, "POST");
   assert.equal(

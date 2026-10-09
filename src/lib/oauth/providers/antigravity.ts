@@ -95,7 +95,7 @@ export function buildAntigravityAuthUrl(
   return `${config.authorizeUrl}?${params.toString()}`;
 }
 
-export async function exchangeAntigravityToken(
+async function exchangeAntigravityToken(
   config: AntigravityOAuthConfig,
   clientProfile: AntigravityClientProfile,
   code: string,

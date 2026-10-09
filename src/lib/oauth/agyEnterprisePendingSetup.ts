@@ -13,8 +13,8 @@ export type AgyEnterpriseTokens = {
   email?: string;
   providerSpecificData: Record<string, unknown>;
 };
-export type AgyEnterpriseResult = { status: "completed"; connectionId: string };
-export type AgyEnterpriseLicenseSource = "discovered" | "custom";
+type AgyEnterpriseResult = { status: "completed"; connectionId: string };
+type AgyEnterpriseLicenseSource = "discovered" | "custom";
 type Ticket = {
   owner: string;
   expiresAt: number;

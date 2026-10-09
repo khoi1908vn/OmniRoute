@@ -71,7 +71,6 @@ test("model discovery reads first-group buckets including exhausted IDs and pres
     assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer synthetic");
     return Response.json(summary);
   });
-  assert.equal(typeof agyEnterprise.fetchAgyEnterpriseModels, "function");
   assert.deepEqual(await agyEnterprise.fetchAgyEnterpriseModels("synthetic"), [
     {
       id: "gemini-3.8-flash-high",

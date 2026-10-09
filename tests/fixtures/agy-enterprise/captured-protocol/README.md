@@ -15,13 +15,12 @@ Each flow has `.http.json` metadata, `.request.json`, and `.response.sse`. Reque
 
 `SYNTHETIC_SIGNATURE_*` values are placeholders, deliberately unusable upstream. Repeated placeholders establish exact equality relationships found in the capture. They do not prove cryptographic validity or whether replay without signatures would succeed. `SANITIZED_OUTPUT_*` substitutes the complete result string; the original first result contained an error, but its private text is not retained. No opaque signature digest is exported.
 
-`translator-probe.json` is generated from these sanitized fixtures against the current dirty worktree. It is diagnostic output, not captured traffic or proof of upstream acceptance. The probe uses an isolated database containing only synthetic signatures. `manifest.json` records capture provenance, selected-flow measurements and redaction locations; original token counts describe the source traffic, not the replacement text/image.
+`manifest.json` records capture provenance, selected-flow measurements and redaction locations; original token counts describe the source traffic, not the replacement text/image. Behavioral regression tests exercise these fixtures against the translators and replay store.
 
 Reproduce from the worktree root:
 
 ```powershell
 node scripts/ad-hoc/inspect-agy-enterprise-capture.mjs
-node --import tsx/esm scripts/ad-hoc/probe-agy-enterprise-translators.mjs
 node --import tsx/esm --test tests/unit/agy-enterprise-captured-evidence.test.ts
 ```
 
