@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { appendFileSync } from "node:fs";
 import { z } from "zod";
 import { getDbInstance } from "../../src/lib/db/core.ts";
 
@@ -91,6 +92,19 @@ function readEnterpriseRow(key: string): EnterpriseReplayRow | undefined {
     .get(NAMESPACE, key) as EnterpriseReplayRow | undefined;
 }
 
+function captureEnterpriseReplayHistory(event: string, namespace: string, history: unknown): void {
+  const diagnosticFile = process.env.ENTERPRISE_REPLAY_RAW_DIAGNOSTIC_FILE;
+  if (!diagnosticFile) return;
+  try {
+    appendFileSync(
+      diagnosticFile,
+      `${JSON.stringify({ event, at: new Date().toISOString(), namespace, history })}\n`
+    );
+  } catch {
+    // Private diagnostic capture must never affect replay behavior.
+  }
+}
+
 function findEnterpriseCallOrigins(namespace: string, id: string): EnterpriseReplayRow[] {
   const prefix = `${namespace}:call:`;
   const suffix = `:${createHash("sha256").update(JSON.stringify(id)).digest("hex")}`;
@@ -99,6 +113,33 @@ function findEnterpriseCallOrigins(namespace: string, id: string): EnterpriseRep
       "SELECT key, value FROM key_value WHERE namespace = ? AND substr(key, 1, ?) = ? AND substr(key, -?) = ?"
     )
     .all(NAMESPACE, prefix.length, prefix, suffix.length, suffix) as EnterpriseReplayRow[];
+}
+
+function findEnterpriseTextOrigins(namespace: string, text: string): EnterpriseReplayRow[] {
+  const prefix = `${namespace}:text:`;
+  const suffix = `:${createHash("sha256").update(JSON.stringify(text)).digest("hex")}`;
+  return getDbInstance()
+    .prepare(
+      "SELECT key, value FROM key_value WHERE namespace = ? AND substr(key, 1, ?) = ? AND substr(key, -?) = ?"
+    )
+    .all(NAMESPACE, prefix.length, prefix, suffix.length, suffix) as EnterpriseReplayRow[];
+}
+
+function hasTeammateMessage(history: unknown): boolean {
+  const contents = Array.isArray(history) ? history : [];
+  const last = contents.at(-1);
+  return (
+    last?.role === "user" &&
+    Array.isArray(last.parts) &&
+    last.parts.some(
+      (part: unknown) =>
+        !!part &&
+        typeof part === "object" &&
+        "text" in part &&
+        typeof part.text === "string" &&
+        part.text.includes("<teammate-message")
+    )
+  );
 }
 
 function resolveEnterpriseCallRecord(
@@ -171,8 +212,21 @@ export function storeAgyEnterpriseTextSignature(
   signature: string,
   history: unknown = []
 ): void {
-  if (!namespace?.startsWith("agy-enterprise:") || !text) return;
-  storeEnterpriseSignature(enterpriseReplayKey(namespace, "text", text, history), signature);
+  if (!namespace?.startsWith("agy-enterprise:") || !text || !signature) return;
+  const contents = Array.isArray(history) ? history : [];
+  const storedSignature = hasTeammateMessage(contents)
+    ? JSON.stringify({
+        kind: "native-teammate-text",
+        signature,
+        previousHistoryDigest: agyEnterpriseReplayHistoryDigest(contents.slice(0, -1)),
+        teammateMessage: true,
+      })
+    : JSON.stringify({
+        kind: "native-context-text",
+        signature,
+        previousHistoryDigest: agyEnterpriseReplayHistoryDigest(contents.slice(0, -1)),
+      });
+  storeEnterpriseSignature(enterpriseReplayKey(namespace, "text", text, history), storedSignature);
 }
 
 export function getAgyEnterpriseTextSignature(
@@ -438,6 +492,89 @@ export function getAgyEnterpriseTextReplay(
   if (!namespace?.startsWith("agy-enterprise:") || !text) return null;
   const key = enterpriseReplayKey(namespace, "text", text, history);
   let value = readEnterpriseSignature(key);
+  if (!value && !calls.length && hasTeammateMessage(history)) {
+    try {
+      // Teammate reports can rebuild the final user turn. Keep prior context exact
+      // and require a single recorded origin for this exact text.
+      if (readEnterpriseRow(key)) return null;
+      const origins = findEnterpriseTextOrigins(namespace, text);
+      if (origins.length !== 1) return null;
+      const origin = parsePersistedEntry(origins[0].value);
+      if (!origin || origin.entry.signature === AMBIGUOUS_TEXT) return null;
+      const signatureRecord = z
+        .object({
+          kind: z.literal("native-teammate-text"),
+          signature: z.string().min(1),
+          previousHistoryDigest: z.string().min(1),
+          teammateMessage: z.literal(true),
+        })
+        .strict()
+        .safeParse(JSON.parse(origin.entry.signature));
+      const contextSignatureRecord = z
+        .object({
+          kind: z.literal("native-context-text"),
+          signature: z.string().min(1),
+          previousHistoryDigest: z.string().min(1),
+        })
+        .strict()
+        .safeParse(JSON.parse(origin.entry.signature));
+      const unsignedRecord = z
+        .object({
+          kind: z.literal("native-teammate-unsigned-text"),
+          previousHistoryDigest: z.string().min(1),
+          teammateMessage: z.literal(true),
+        })
+        .strict()
+        .safeParse(JSON.parse(origin.entry.signature));
+      const contextUnsignedRecord = z
+        .object({
+          kind: z.literal("native-unsigned-context-text"),
+          previousHistoryDigest: z.string().min(1),
+        })
+        .strict()
+        .safeParse(JSON.parse(origin.entry.signature));
+      const contents = Array.isArray(history) ? history : [];
+      const previousHistoryDigest = signatureRecord.success
+        ? signatureRecord.data.previousHistoryDigest
+        : contextSignatureRecord.success
+          ? contextSignatureRecord.data.previousHistoryDigest
+          : unsignedRecord.success
+            ? unsignedRecord.data.previousHistoryDigest
+            : contextUnsignedRecord.success
+              ? contextUnsignedRecord.data.previousHistoryDigest
+              : null;
+      if (
+        !previousHistoryDigest ||
+        previousHistoryDigest !== agyEnterpriseReplayHistoryDigest(contents.slice(0, -1))
+      )
+        return null;
+      const diagnosticFile = process.env.ENTERPRISE_REPLAY_DIAGNOSTIC_FILE;
+      if (diagnosticFile) {
+        try {
+          appendFileSync(
+            diagnosticFile,
+            `${JSON.stringify({
+              event: "teammate-text-origin-recovered",
+              at: new Date().toISOString(),
+              namespace,
+              textHash: createHash("sha256").update(text).digest("hex"),
+              historyDigest: agyEnterpriseReplayHistoryDigest(contents),
+              previousHistoryDigest,
+              unsigned: unsignedRecord.success || contextUnsignedRecord.success,
+            })}\n`
+          );
+        } catch {
+          // Diagnostic capture must never affect replay behavior.
+        }
+      }
+      if (unsignedRecord.success || contextUnsignedRecord.success) return {};
+      if (signatureRecord.success) value = signatureRecord.data.signature;
+      else if (contextSignatureRecord.success) value = contextSignatureRecord.data.signature;
+      else return null;
+    } catch {
+      return null;
+    }
+  }
   if (!value && calls.length) {
     try {
       // Existing expired/conflicting text is authoritative, never bypass it.
@@ -461,6 +598,47 @@ export function getAgyEnterpriseTextReplay(
   if (!value) return null;
   if (!value.startsWith("{")) return { thoughtSignature: value };
   try {
+    const teammateUnsignedText = z
+      .object({
+        kind: z.literal("native-teammate-unsigned-text"),
+        previousHistoryDigest: z.string().min(1),
+        teammateMessage: z.literal(true),
+      })
+      .strict()
+      .safeParse(JSON.parse(value));
+    if (teammateUnsignedText.success) return calls.length === 0 ? {} : null;
+    const teammateText = z
+      .object({
+        kind: z.literal("native-teammate-text"),
+        signature: z.string().min(1),
+        previousHistoryDigest: z.string().min(1),
+        teammateMessage: z.literal(true),
+      })
+      .strict()
+      .safeParse(JSON.parse(value));
+    if (teammateText.success) return { thoughtSignature: teammateText.data.signature };
+    const contextText = z
+      .object({
+        kind: z.literal("native-context-text"),
+        signature: z.string().min(1),
+        previousHistoryDigest: z.string().min(1),
+      })
+      .strict()
+      .safeParse(JSON.parse(value));
+    if (contextText.success) return { thoughtSignature: contextText.data.signature };
+    const unsigned = z
+      .object({ kind: z.literal("native-unsigned-text") })
+      .strict()
+      .safeParse(JSON.parse(value));
+    if (unsigned.success) return calls.length === 0 ? {} : null;
+    const contextUnsignedText = z
+      .object({
+        kind: z.literal("native-unsigned-context-text"),
+        previousHistoryDigest: z.string().min(1),
+      })
+      .strict()
+      .safeParse(JSON.parse(value));
+    if (contextUnsignedText.success) return calls.length === 0 ? {} : null;
     const grounded = z
       .object({
         kind: z.literal("native-grounded-text"),
@@ -604,6 +782,44 @@ export function describeAgyEnterpriseReplayFailure(
   resolution?: EnterpriseCallReplayResolution
 ): string {
   const key = enterpriseReplayKey(namespace, kind, identity, history);
+  if (kind === "text") captureEnterpriseReplayHistory("replay-failure", namespace, history);
+  const diagnosticFile = process.env.ENTERPRISE_REPLAY_DIAGNOSTIC_FILE;
+  if (diagnosticFile && kind === "text") {
+    try {
+      const contents = Array.isArray(history) ? history : [];
+      appendFileSync(
+        diagnosticFile,
+        `${JSON.stringify({
+          event: "replay-failure",
+          at: new Date().toISOString(),
+          pid: process.pid,
+          historyDigest: agyEnterpriseReplayHistoryDigest(contents),
+          identityChars: identity.length,
+          identityHash: createHash("sha256").update(identity).digest("hex"),
+          history: contents.map((content) => ({
+            role: content?.role,
+            parts: Array.isArray(content?.parts)
+              ? content.parts.map((part) => ({
+                  keys: Object.keys(part).sort(),
+                  textChars: typeof part.text === "string" ? part.text.length : undefined,
+                  textHash:
+                    typeof part.text === "string"
+                      ? createHash("sha256").update(part.text).digest("hex")
+                      : undefined,
+                  thought: part.thought === true,
+                  signatureHash:
+                    typeof part.thoughtSignature === "string"
+                      ? createHash("sha256").update(part.thoughtSignature).digest("hex")
+                      : undefined,
+                }))
+              : [],
+          })),
+        })}\n`
+      );
+    } catch {
+      // Diagnostic capture must never affect request rejection.
+    }
+  }
   let reason = "missing";
   let originRecords = 0;
   if (resolution && !resolution.ok) {
@@ -685,6 +901,8 @@ export type AgyEnterpriseReplayState = {
   enterpriseTextSignature?: string | null;
   enterpriseSignedText?: string;
   enterpriseHasCall?: boolean;
+  enterpriseNonTextPart?: boolean;
+  enterpriseFinishReason?: unknown;
   enterpriseTextAfterCall?: boolean;
   enterpriseThoughtAfterText?: boolean;
   enterpriseTextAfterThought?: boolean;
@@ -700,10 +918,20 @@ export type AgyEnterpriseReplayState = {
 export function captureAgyEnterpriseReplayParts(
   state: AgyEnterpriseReplayState,
   parts: Array<Record<string, unknown>>,
-  terminal: boolean
+  terminal: boolean,
+  finishReason?: unknown
 ): void {
   if (state.provider !== "agy-enterprise" || !state.signatureNamespace) return;
   for (const part of parts) {
+    const thoughtTextOnly =
+      part.thought === true &&
+      typeof part.text === "string" &&
+      Object.keys(part).every((key) => ["text", "thought", "thoughtSignature"].includes(key));
+    if (
+      !thoughtTextOnly &&
+      (typeof part.text !== "string" || Object.keys(part).some((key) => key !== "text"))
+    )
+      state.enterpriseNonTextPart = true;
     if (part.thought === true && state.enterpriseVisibleText)
       state.enterpriseThoughtAfterText = true;
     if (part.functionCall) {
@@ -733,6 +961,80 @@ export function captureAgyEnterpriseReplayParts(
     }
   }
   if (!terminal) return;
+  captureEnterpriseReplayHistory(
+    "response-origin",
+    state.signatureNamespace,
+    state.enterpriseReplayHistory
+  );
+  const diagnosticFile = process.env.ENTERPRISE_REPLAY_DIAGNOSTIC_FILE;
+  if (diagnosticFile) {
+    try {
+      const history = Array.isArray(state.enterpriseReplayHistory)
+        ? state.enterpriseReplayHistory
+        : [];
+      appendFileSync(
+        diagnosticFile,
+        `${JSON.stringify({
+          at: new Date().toISOString(),
+          pid: process.pid,
+          namespace: state.signatureNamespace,
+          historyDigest: agyEnterpriseReplayHistoryDigest(history),
+          history: history.map((content) => ({
+            role: content?.role,
+            parts: Array.isArray(content?.parts)
+              ? content.parts.map((part) => ({
+                  keys: Object.keys(part).sort(),
+                  textChars: typeof part.text === "string" ? part.text.length : undefined,
+                  textHash:
+                    typeof part.text === "string"
+                      ? createHash("sha256").update(part.text).digest("hex")
+                      : undefined,
+                  thought: part.thought === true,
+                  signatureHash:
+                    typeof part.thoughtSignature === "string"
+                      ? createHash("sha256").update(part.thoughtSignature).digest("hex")
+                      : undefined,
+                }))
+              : [],
+          })),
+          visibleTextChars: state.enterpriseVisibleText?.length ?? 0,
+          visibleTextHash: state.enterpriseVisibleText
+            ? createHash("sha256").update(state.enterpriseVisibleText).digest("hex")
+            : null,
+          partCount: parts.length,
+          partKeys: parts.map((part) => Object.keys(part).sort()),
+          finishReason: finishReason ?? null,
+        })}\n`
+      );
+    } catch {
+      // Diagnostic capture must never affect provider streaming.
+    }
+  }
+  // STOP text can be unsigned. Retain earlier context so a teammate wakeup can
+  // rebuild the final user turn without inventing a signature.
+  if (
+    finishReason === "STOP" &&
+    state.enterpriseVisibleText &&
+    !state.enterpriseHasCall &&
+    !state.enterpriseNonTextPart
+  )
+    storeEnterpriseSignature(
+      enterpriseReplayKey(
+        state.signatureNamespace,
+        "text",
+        state.enterpriseVisibleText,
+        state.enterpriseReplayHistory
+      ),
+      JSON.stringify({
+        kind: "native-unsigned-context-text",
+        previousHistoryDigest: agyEnterpriseReplayHistoryDigest(
+          (Array.isArray(state.enterpriseReplayHistory) ? state.enterpriseReplayHistory : []).slice(
+            0,
+            -1
+          )
+        ),
+      })
+    );
   if (
     state.enterpriseVisibleText &&
     state.enterpriseTextSignature &&

@@ -120,6 +120,192 @@ test("Standalone text rejects history changed by instruction removal", () => {
   );
 });
 
+test("Ordinary text origins survive a teammate final-user rebuild", () => {
+  store.clearGeminiThoughtSignatures();
+  const text = "The exploration is complete.";
+  const signature = "dGV4dA==";
+  const teammateText =
+    'Another Claude session sent a message: <teammate-message teammate_id="explorer">Report</teammate-message>\n';
+  const originHistory = [
+    ...history,
+    { role: "user", parts: [{ text: "Parent asks for current progress." }] },
+  ];
+  store.captureAgyEnterpriseReplayParts(
+    { ...state(), enterpriseReplayHistory: originHistory },
+    [{ text, thoughtSignature: signature }],
+    true
+  );
+  const rebuiltTeammateHistory = [
+    ...history,
+    { role: "user", parts: [{ text: teammateText.slice(0, -1) }] },
+  ];
+  assert.deepEqual(store.getAgyEnterpriseTextReplay(namespace, text, [], rebuiltTeammateHistory), {
+    thoughtSignature: signature,
+  });
+  const translated = claudeToGeminiRequest(
+    model,
+    {
+      messages: [
+        { role: "user", content: "hello" },
+        { role: "user", content: teammateText.slice(0, -1) },
+        { role: "assistant", content: text },
+      ],
+    },
+    false,
+    credentials
+  );
+  assert.deepEqual(translated.contents.at(-1)?.parts, [{ text, thoughtSignature: signature }]);
+  assert.equal(
+    store.getAgyEnterpriseTextReplay(
+      namespace,
+      text,
+      [],
+      [{ role: "user", parts: [{ text: "Changed original prompt." }] }, rebuiltTeammateHistory[1]]
+    ),
+    null
+  );
+  const unsignedText = "The team report is complete.";
+  store.captureAgyEnterpriseReplayParts(
+    { ...state(), enterpriseReplayHistory: originHistory },
+    [{ text: unsignedText }],
+    true,
+    "STOP"
+  );
+  assert.deepEqual(
+    store.getAgyEnterpriseTextReplay(namespace, unsignedText, [], rebuiltTeammateHistory),
+    {}
+  );
+  store.storeAgyEnterpriseTextSignature(namespace, text, "b3RoZXI=", [
+    ...history,
+    { role: "user", parts: [{ text: teammateText + "another message" }] },
+  ]);
+  assert.equal(store.getAgyEnterpriseTextReplay(namespace, text, [], rebuiltTeammateHistory), null);
+});
+
+const teammateOrigin = [
+  ...history,
+  { role: "user", parts: [{ text: "Parent asks for current progress." }] },
+];
+const teammateRebuilt = [
+  ...history,
+  {
+    role: "user",
+    parts: [{ text: '<teammate-message teammate_id="explorer">Report</teammate-message>' }],
+  },
+];
+
+test("Teammate standalone recovery retains namespace, identity, and context guards", () => {
+  store.clearGeminiThoughtSignatures();
+  const text = "The exploration is complete.";
+  store.storeAgyEnterpriseTextSignature(namespace, text, "dGV4dA==", teammateOrigin);
+  assert.deepEqual(store.getAgyEnterpriseTextReplay(namespace, text, [], teammateRebuilt), {
+    thoughtSignature: "dGV4dA==",
+  });
+  assert.equal(store.getAgyEnterpriseTextReplay(namespace, text + "!", [], teammateRebuilt), null);
+  for (const invalid of [
+    [{ role: "user", parts: [{ text: "changed earlier prompt" }] }, teammateRebuilt[1]],
+    [...history, { role: "user", parts: [{ text: "unrelated replacement" }] }],
+  ]) {
+    assert.equal(store.getAgyEnterpriseTextReplay(namespace, text, [], invalid), null);
+  }
+  for (const other of [
+    store.buildAgyEnterpriseReplayNamespace("other-connection", model),
+    store.buildAgyEnterpriseReplayNamespace("integrity", "gemini-3.8-flash-low"),
+  ]) {
+    assert.equal(store.getAgyEnterpriseTextReplay(other, text, [], teammateRebuilt), null);
+  }
+  assert.equal(store.getAgyEnterpriseTextReplay(namespace, text, [call], teammateRebuilt), null);
+});
+
+test("Teammate text recovery never bypasses invalid or ambiguous persisted origins", () => {
+  const text = "The exploration is complete.";
+  for (const invalid of [
+    "expired-exact",
+    "malformed",
+    "conflicting-exact",
+    "duplicate",
+    "legacy",
+  ]) {
+    store.clearGeminiThoughtSignatures();
+    store.storeAgyEnterpriseTextSignature(namespace, text, "dGV4dA==", teammateOrigin);
+    const db = getDbInstance();
+    const row = db
+      .prepare("SELECT key, value FROM key_value WHERE namespace = ?")
+      .get("gemini_thought_signatures") as { key: string; value: string };
+    const entry = JSON.parse(row.value);
+    if (invalid === "duplicate") {
+      store.storeAgyEnterpriseTextSignature(namespace, text, "dGV4dA==", [
+        ...history,
+        { role: "user", parts: [{ text: "another origin" }] },
+      ]);
+    } else if (invalid.endsWith("exact")) {
+      const exactKey = row.key.replace(
+        store.agyEnterpriseReplayHistoryDigest(teammateOrigin),
+        store.agyEnterpriseReplayHistoryDigest(teammateRebuilt)
+      );
+      db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
+        "gemini_thought_signatures",
+        exactKey,
+        JSON.stringify(
+          invalid === "expired-exact"
+            ? { ...entry, expiresAt: 1 }
+            : {
+                ...entry,
+                signature: "!ambiguous-enterprise-text!",
+              }
+        )
+      );
+    } else {
+      db.prepare("UPDATE key_value SET value = ? WHERE namespace = ? AND key = ?").run(
+        JSON.stringify({ ...entry, signature: invalid === "legacy" ? "dGV4dA==" : "{malformed" }),
+        "gemini_thought_signatures",
+        row.key
+      );
+    }
+    store.clearGeminiThoughtSignatureMemoryForTests();
+    assert.equal(
+      store.getAgyEnterpriseTextReplay(namespace, text, [], teammateRebuilt),
+      null,
+      invalid
+    );
+    if (invalid === "legacy") {
+      assert.deepEqual(store.getAgyEnterpriseTextReplay(namespace, text, [], teammateOrigin), {
+        thoughtSignature: "dGV4dA==",
+      });
+      db.prepare("UPDATE key_value SET value = ? WHERE namespace = ? AND key = ?").run(
+        JSON.stringify({ ...entry, signature: JSON.stringify({ kind: "native-unsigned-text" }) }),
+        "gemini_thought_signatures",
+        row.key
+      );
+      store.clearGeminiThoughtSignatureMemoryForTests();
+      assert.deepEqual(store.getAgyEnterpriseTextReplay(namespace, text, [], teammateOrigin), {});
+      assert.equal(store.getAgyEnterpriseTextReplay(namespace, text, [], teammateRebuilt), null);
+    }
+  }
+});
+
+test("Teammate context origins survive memory and database reopening", () => {
+  store.clearGeminiThoughtSignatures();
+  const text = "The exploration is complete.";
+  const unsignedText = "The team report is complete.";
+  store.storeAgyEnterpriseTextSignature(namespace, text, "dGV4dA==", teammateOrigin);
+  store.captureAgyEnterpriseReplayParts(
+    { ...state(), enterpriseReplayHistory: teammateOrigin },
+    [{ text: unsignedText }],
+    true,
+    "STOP"
+  );
+  store.clearGeminiThoughtSignatureMemoryForTests();
+  resetDbInstance();
+  assert.deepEqual(store.getAgyEnterpriseTextReplay(namespace, text, [], teammateRebuilt), {
+    thoughtSignature: "dGV4dA==",
+  });
+  assert.deepEqual(
+    store.getAgyEnterpriseTextReplay(namespace, unsignedText, [], teammateRebuilt),
+    {}
+  );
+});
+
 test("Resumed teammates replay immutable call groups after their hook prefix is rebuilt", () => {
   store.clearGeminiThoughtSignatures();
   const originalHistory = [
