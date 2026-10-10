@@ -574,15 +574,20 @@ function createProviderConnectionRow(data: JsonRecord, db: DbLike, agyEnterprise
   const chatgptUserId = toStringOrNull(providerSpecificData.chatgptUserId);
 
   if (data.authType === "oauth" && data.provider === "agy-enterprise") {
-    const rows = db
-      .prepare("SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth'")
-      .all(data.provider) as JsonRecord[];
-    existing =
-      rows.find((row) =>
-        agyEnterpriseTargetId
-          ? row.id === agyEnterpriseTargetId
-          : sameAgyEnterpriseIdentity(toRecord(rowToCamel(row)), data)
-      ) || null;
+    if (agyEnterpriseTargetId) {
+      existing =
+        (db
+          .prepare(
+            "SELECT * FROM provider_connections WHERE id = ? AND provider = ? AND auth_type = 'oauth'"
+          )
+          .get(agyEnterpriseTargetId, data.provider) as JsonRecord | undefined) || null;
+    } else {
+      const rows = db
+        .prepare("SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth'")
+        .all(data.provider) as JsonRecord[];
+      existing =
+        rows.find((row) => sameAgyEnterpriseIdentity(toRecord(rowToCamel(row)), data)) || null;
+    }
   } else if (data.authType === "oauth" && data.provider === "codex" && chatgptUserId) {
     const strongSql = workspaceId
       ? "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND json_extract(provider_specific_data, '$.workspaceId') = ? AND json_extract(provider_specific_data, '$.chatgptUserId') = ?"

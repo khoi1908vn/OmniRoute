@@ -481,35 +481,36 @@ async function _getAccessTokenInternal(provider, credentials, log, proxyConfig: 
   }
 }
 
+const EXPLICITLY_REFRESHABLE_PROVIDERS = new Set([
+  "gemini",
+  "antigravity",
+  "agy",
+  "agy-enterprise",
+  "claude",
+  "codex",
+  "openference",
+  "qoder",
+  "github",
+  "kiro",
+  "amazon-q",
+  "cline",
+  "kimi-coding",
+  "muse-code",
+  // Devin auth is not refreshable here: devin-desktop accepts an imported API
+  // key (#8228), while devin-cli is local-CLI owned via `devin auth login`
+  // (#8407). Neither connection carries a refresh token, so listing either
+  // provider would make tokenHealthCheck force a healthy connection to
+  // testStatus="expired" / errorCode="no_refresh_token".
+  "gitlab-duo",
+  "codebuddy-cn",
+  "cursor",
+]);
+
 /**
  * Whether a provider has a supported refresh path in this service.
  */
 export function supportsTokenRefresh(provider) {
-  const explicitlySupported = new Set([
-    "gemini",
-    "antigravity",
-    "agy",
-    "agy-enterprise",
-    "claude",
-    "codex",
-    "openference",
-    "qoder",
-    "github",
-    "kiro",
-    "amazon-q",
-    "cline",
-    "kimi-coding",
-    "muse-code",
-    // Devin auth is not refreshable here: devin-desktop accepts an imported API
-    // key (#8228), while devin-cli is local-CLI owned via `devin auth login`
-    // (#8407). Neither connection carries a refresh token, so listing either
-    // provider would make tokenHealthCheck force a healthy connection to
-    // testStatus="expired" / errorCode="no_refresh_token".
-    "gitlab-duo",
-    "codebuddy-cn",
-    "cursor",
-  ]);
-  if (explicitlySupported.has(provider)) return true;
+  if (EXPLICITLY_REFRESHABLE_PROVIDERS.has(provider)) return true;
   const config = PROVIDERS[provider];
   return !!(config?.refreshUrl || config?.tokenUrl);
 }

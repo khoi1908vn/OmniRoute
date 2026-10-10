@@ -69,7 +69,10 @@ function normalizeCacheEntry(value: unknown): ProviderLimitsCacheEntry | null {
   const bankedResetCredits = Number(record.bankedResetCredits);
   const billing = sanitizeProviderBillingStatus(record.billing);
   const modelQuotas = toRecord(record.modelQuotas);
-  const observations = agyEnterpriseQuotaObservationsSchema.safeParse(record.quotaObservations);
+  const observations =
+    record.quotaObservations === undefined
+      ? undefined
+      : agyEnterpriseQuotaObservationsSchema.safeParse(record.quotaObservations);
 
   return {
     quotas: toRecord(record.quotas),
@@ -80,7 +83,7 @@ function normalizeCacheEntry(value: unknown): ProviderLimitsCacheEntry | null {
     source: typeof record.source === "string" ? record.source : null,
     ...(Number.isFinite(bankedResetCredits) ? { bankedResetCredits } : {}),
     ...(billing ? { billing } : {}),
-    ...(observations.success ? { quotaObservations: observations.data } : {}),
+    ...(observations?.success ? { quotaObservations: observations.data } : {}),
   };
 }
 

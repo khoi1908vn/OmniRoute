@@ -22,15 +22,13 @@ import {
 
 const UNSUPPORTED_TOOLS = "Enterprise unverified tool mode: omit toolConfig";
 const UNSUPPORTED_IMAGES = "Enterprise unverified media: only inline PNG user input is supported";
+const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const pngData = z
   .string()
   .min(1)
   .refine((data) => {
     const bytes = Buffer.from(data, "base64");
-    return (
-      bytes.toString("base64") === data &&
-      bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-    );
+    return bytes.toString("base64") === data && bytes.subarray(0, 8).equals(PNG_SIGNATURE);
   }, UNSUPPORTED_IMAGES);
 const part = z
   .unknown()
@@ -157,7 +155,7 @@ export class AgyEnterpriseExecutor extends BaseExecutor {
     _index = 0,
     credentials: ProviderCredentials | null = null
   ) {
-    return `${agyEnterpriseResource(agyEnterpriseContextSchema.parse(credentials?.providerSpecificData))}:streamGenerateContent?alt=sse`;
+    return `${agyEnterpriseResource(credentials?.providerSpecificData)}:streamGenerateContent?alt=sse`;
   }
   buildHeaders(credentials: ProviderCredentials) {
     if (!credentials.accessToken) throw new Error("Enterprise OAuth access token required");

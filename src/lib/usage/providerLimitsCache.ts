@@ -27,7 +27,10 @@ export function toProviderLimitsCacheEntry(
   fetchedAt = new Date().toISOString()
 ): ProviderLimitsCacheEntry {
   const bankedResetCredits = Number(usage.bankedResetCredits);
-  const observations = agyEnterpriseQuotaObservationsSchema.safeParse(usage.quotaObservations);
+  const observations =
+    usage.quotaObservations === undefined
+      ? undefined
+      : agyEnterpriseQuotaObservationsSchema.safeParse(usage.quotaObservations);
   return {
     quotas: isRecord(usage.quotas) ? usage.quotas : null,
     ...(isRecord(usage.modelQuotas) ? { modelQuotas: usage.modelQuotas } : {}),
@@ -37,7 +40,7 @@ export function toProviderLimitsCacheEntry(
     source,
     bankedResetCredits: Number.isFinite(bankedResetCredits) ? bankedResetCredits : undefined,
     billing: sanitizeProviderBillingStatus(usage.billing),
-    ...(observations.success ? { quotaObservations: observations.data } : {}),
+    ...(observations?.success ? { quotaObservations: observations.data } : {}),
   };
 }
 

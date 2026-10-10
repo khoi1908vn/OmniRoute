@@ -25,6 +25,9 @@ const agyEnterpriseQuotaSummarySchema = z.object({
     .max(100),
 });
 type AgyEnterpriseQuotaSummary = z.infer<typeof agyEnterpriseQuotaSummarySchema>;
+const licensesSchema = z.object({ licenses: z.array(agyEnterpriseLicenseSchema).default([]) });
+const assignedLicenseSchema = z.object({ license: agyEnterpriseLicenseSchema });
+const configSchema = z.object({ adminControls: z.record(z.string(), z.unknown()) }).passthrough();
 
 export async function fetchAgyEnterpriseQuotaSummary(
   accessToken: string,
@@ -63,7 +66,7 @@ const AGY_ENTERPRISE_HOSTS: Record<AgyEnterpriseLocation, string> = {
   us: "https://businessaicode.us.rep.googleapis.com",
   eu: "https://businessaicode.eu.rep.googleapis.com",
 };
-export function agyEnterpriseResource(context: AgyEnterpriseContext): string {
+export function agyEnterpriseResource(context: unknown): string {
   const checked = agyEnterpriseContextSchema.parse(context);
   return `${AGY_ENTERPRISE_HOSTS[checked.location]}/v1beta/projects/${encodeURIComponent(checked.projectId)}/locations/${checked.location}`;
 }
@@ -128,15 +131,13 @@ export async function agyEnterpriseFetchJson(
   return response.json();
 }
 export async function fetchAgyEnterpriseLicenses(accessToken: string, signal?: AbortSignal) {
-  return z
-    .object({ licenses: z.array(agyEnterpriseLicenseSchema).default([]) })
-    .parse(
-      await agyEnterpriseFetchJson(
-        "https://businessaicode.googleapis.com/v1beta:fetchLicenses",
-        accessToken,
-        { signal }
-      )
-    ).licenses;
+  return licensesSchema.parse(
+    await agyEnterpriseFetchJson(
+      "https://businessaicode.googleapis.com/v1beta:fetchLicenses",
+      accessToken,
+      { signal }
+    )
+  ).licenses;
 }
 export async function assignAgyEnterpriseLicense(
   accessToken: string,
@@ -145,7 +146,7 @@ export async function assignAgyEnterpriseLicense(
   signal?: AbortSignal
 ) {
   const resource = agyEnterpriseResource({ projectId, location, userTier: "pending" });
-  const license = z.object({ license: agyEnterpriseLicenseSchema }).parse(
+  const license = assignedLicenseSchema.parse(
     await agyEnterpriseFetchJson(`${resource}:selfAssignLicense`, accessToken, {
       method: "POST",
       body: JSON.stringify({ parent: `projects/${projectId}/locations/${location}` }),
@@ -161,14 +162,11 @@ export async function fetchAgyEnterpriseConfig(
   context: AgyEnterpriseContext,
   signal?: AbortSignal
 ) {
-  return z
-    .object({ adminControls: z.record(z.string(), z.unknown()) })
-    .passthrough()
-    .parse(
-      await agyEnterpriseFetchJson(
-        `${agyEnterpriseResource(context)}:fetchConfig?entitlement.userTier=${encodeURIComponent(context.userTier)}`,
-        accessToken,
-        { signal }
-      )
-    );
+  return configSchema.parse(
+    await agyEnterpriseFetchJson(
+      `${agyEnterpriseResource(context)}:fetchConfig?entitlement.userTier=${encodeURIComponent(context.userTier)}`,
+      accessToken,
+      { signal }
+    )
+  );
 }

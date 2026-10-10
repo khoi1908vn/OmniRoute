@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { timingSafeEqual } from "crypto";
 import {
   getProvider,
   generateAuthData,
@@ -13,23 +12,22 @@ import {
   persistOAuthConnection,
   buildOAuthConnectionCreatePayload,
   findExistingOAuthConnectionMatch,
+  safeEqual,
+  syncToCloudIfEnabled,
 } from "@/lib/oauth/connectionPersistence";
 import { createDeviceFlowTicket, getDeviceFlowTicketStatus } from "@/lib/oauth/deviceFlowTickets";
 import {
   createProviderConnection,
   updateProviderConnection,
   getProviderConnections,
-  isCloudEnabled,
   resolveProxyForProvider,
 } from "@/models";
-import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { isValidGheUrl } from "@/shared/validation/providerSpecificData";
 import { AWS_REGION_PATTERN } from "@/lib/oauth/constants/oauth";
 import {
   antigravityDegradedProjectState,
   antigravityPersistStatus,
 } from "@/lib/oauth/antigravityProjectGate";
-import { syncToCloud } from "@/lib/cloudSync";
 import { startLocalServer } from "@/lib/oauth/utils/server";
 import { runWithProxyContextOrDirect } from "@omniroute/open-sse/utils/proxyFetch.ts";
 import {
@@ -83,18 +81,6 @@ const RETIRED_PKCE_PROVIDERS = new Set(["devin-desktop", "devin-cli"]);
 
 /** Providers that allow direct import of a raw API token (no OAuth exchange). */
 const IMPORT_TOKEN_PROVIDERS = new Set(["devin-desktop", "devin-cli", "grok-cli"]);
-
-/**
- * Constant-time string comparison to prevent timing-oracle attacks (CWE-208).
- * Handles null/undefined safely and different-length strings.
- */
-function safeEqual(a: string | null | undefined, b: string | null | undefined): boolean {
-  if (a == null || b == null) return a === b;
-  const ba = Buffer.from(String(a));
-  const bb = Buffer.from(String(b));
-  if (ba.length !== bb.length) return false;
-  return timingSafeEqual(ba, bb);
-}
 
 /**
  * Resolve the externally reachable base URL for public share links. Prefers the
@@ -275,7 +261,7 @@ export async function GET(
     }
 
     if (action === "start-callback-server") {
-      return await handleStartCallbackServer(provider, searchParams, request);
+      return await handleStartCallbackServer(provider, request);
     }
 
     if (action === "public-link-status") {
@@ -305,11 +291,7 @@ export async function GET(
  * Start a provider-configured PKCE callback server.
  * Returns the auth URL and stores codeVerifier for later exchange.
  */
-async function handleStartCallbackServer(
-  provider: string,
-  searchParams: URLSearchParams,
-  request?: Request
-) {
+async function handleStartCallbackServer(provider: string, request?: Request) {
   if (!PKCE_CALLBACK_PROVIDERS.has(provider)) {
     return NextResponse.json(
       { error: `Callback server not supported for provider: ${provider}` },
@@ -323,7 +305,7 @@ async function handleStartCallbackServer(
   if (callbackStates[provider]?.close) {
     try {
       callbackStates[provider].close();
-    } catch (e) {
+    } catch {
       /* ignore */
     }
   }
@@ -359,7 +341,7 @@ async function handleStartCallbackServer(
       if (callbackStates[provider]?.startedAt === startedAt) {
         try {
           close();
-        } catch (e) {
+        } catch {
           /* ignore */
         }
         delete callbackStates[provider];
@@ -720,7 +702,7 @@ export async function POST(
       // Clean up server
       try {
         close();
-      } catch (e) {
+      } catch {
         /* ignore */
       }
       delete callbackStates[provider];
@@ -969,20 +951,5 @@ export async function POST(
   } catch (error) {
     console.error("OAuth POST error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-  }
-}
-
-/**
- * Sync to Cloud if enabled
- */
-async function syncToCloudIfEnabled() {
-  try {
-    const cloudEnabled = await isCloudEnabled();
-    if (!cloudEnabled) return;
-
-    const machineId = await getConsistentMachineId();
-    await syncToCloud(machineId);
-  } catch (error) {
-    console.log("Error syncing to cloud after OAuth:", error);
   }
 }

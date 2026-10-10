@@ -84,12 +84,8 @@ function connectionKey(provider: string, connectionId: string): string {
   return `${provider.trim()}::${connectionId.trim()}`;
 }
 
-function quotaCacheScope(provider: string, requestedModel?: string | null): string {
-  return getQuotaFetchScope(provider, requestedModel);
-}
-
 function cacheKey(provider: string, connectionId: string, requestedModel?: string | null): string {
-  return `${connectionKey(provider, connectionId)}::${quotaCacheScope(provider, requestedModel)}`;
+  return `${connectionKey(provider, connectionId)}::${getQuotaFetchScope(provider, requestedModel)}`;
 }
 
 function dropExpiredPendingForceRefresh(key: string, now: number): boolean {
@@ -106,8 +102,7 @@ function dropExpiredPendingForceRefresh(key: string, now: number): boolean {
 // Lazy expiry on read — same as the provider breaker. Name stays `is*` because
 // callers only need a boolean; the map is not a public API.
 function isPendingForceRefresh(key: string, now: number = Date.now()): boolean {
-  if (dropExpiredPendingForceRefresh(key, now)) return false;
-  return pendingForceRefresh.has(key);
+  return !dropExpiredPendingForceRefresh(key, now);
 }
 
 function markPendingForceRefreshMiss(key: string): void {
@@ -345,7 +340,8 @@ function normalizeQuotaWindows(
   }
 
   // Antigravity-style per-model windows: pick worst only inside requested family.
-  const modelWindows = Object.entries(windows).filter(
+  const entries = Object.entries(windows);
+  const modelWindows = entries.filter(
     ([key]) =>
       key !== "credits" &&
       !key.endsWith("_weekly") &&
@@ -363,7 +359,7 @@ function normalizeQuotaWindows(
   }
 
   // Antigravity-style weekly buckets: pick worst only inside requested family.
-  const weeklyWindows = Object.entries(windows).filter(([key]) => {
+  const weeklyWindows = entries.filter(([key]) => {
     const hasFamilyScope = requestedFamily === "gemini" || requestedFamily === "claude";
     return (
       key.endsWith("_weekly") &&
@@ -436,7 +432,10 @@ export const fetchGenericQuota: QuotaFetcher = async (connectionId, connection) 
 
   // Refresh the static window catalog from the unscoped usage payload so a
   // family-scoped request cannot hide sibling-family dashboard controls.
-  const unscopedQuota = convertUsageToQuotaInfo(usage, { provider });
+  const unscopedQuota =
+    isAntigravityProvider(provider) && requestedModel
+      ? convertUsageToQuotaInfo(usage, { provider })
+      : quota;
   registerQuotaWindows(provider, Object.keys(unscopedQuota?.windows || quota.windows || {}));
 
   cache.set(key, quota);

@@ -499,6 +499,15 @@ const enterpriseTextOriginSchema = z.discriminatedUnion("kind", [
     })
     .strict(),
 ]);
+const enterpriseUnsignedTextSchema = z.object({ kind: z.literal("native-unsigned-text") }).strict();
+const enterpriseGroundedTextSchema = z
+  .object({
+    kind: z.literal("native-grounded-text"),
+    nativeText: z.string(),
+    thoughtSignature: z.string().min(1).optional(),
+    callsDigest: z.string(),
+  })
+  .strict();
 
 export function getAgyEnterpriseTextReplay(
   namespace: string,
@@ -571,7 +580,8 @@ export function getAgyEnterpriseTextReplay(
   if (!value) return null;
   if (!value.startsWith("{")) return { thoughtSignature: value };
   try {
-    const contextText = enterpriseTextOriginSchema.safeParse(JSON.parse(value));
+    const record = JSON.parse(value) as { kind: string; callsDigest: string };
+    const contextText = enterpriseTextOriginSchema.safeParse(record);
     if (contextText.success) {
       return "signature" in contextText.data
         ? { thoughtSignature: contextText.data.signature }
@@ -579,20 +589,9 @@ export function getAgyEnterpriseTextReplay(
           ? {}
           : null;
     }
-    const unsigned = z
-      .object({ kind: z.literal("native-unsigned-text") })
-      .strict()
-      .safeParse(JSON.parse(value));
+    const unsigned = enterpriseUnsignedTextSchema.safeParse(record);
     if (unsigned.success) return calls.length === 0 ? {} : null;
-    const grounded = z
-      .object({
-        kind: z.literal("native-grounded-text"),
-        nativeText: z.string(),
-        thoughtSignature: z.string().min(1).optional(),
-        callsDigest: z.string(),
-      })
-      .strict()
-      .safeParse(JSON.parse(value));
+    const grounded = enterpriseGroundedTextSchema.safeParse(record);
     if (grounded.success) {
       const originals = calls.map(
         (call) =>
@@ -611,7 +610,6 @@ export function getAgyEnterpriseTextReplay(
           : {}),
       };
     }
-    const record = JSON.parse(value) as { kind: string; callsDigest: string };
     return record.kind === "native-unsigned-precall-text" &&
       calls.length &&
       record.callsDigest ===
@@ -639,9 +637,7 @@ export function storeAgyEnterpriseCallSignature(
   if (!namespace?.startsWith("agy-enterprise:") || !call.id || !call.name) return;
   // ID plus history locates the turn; bind the contents in the stored value so
   // altered arguments and conflicting ID reuse fail rather than finding a new key.
-  const identity = createHash("sha256")
-    .update(JSON.stringify(canonical(enterpriseCallIdentity(call))))
-    .digest("hex");
+  const identity = hashCall(call);
   storeEnterpriseSignature(
     enterpriseReplayKey(namespace, "call", call.id, history),
     JSON.stringify({ identity, signature })
@@ -945,8 +941,10 @@ export function captureAgyEnterpriseReplayParts(
         callsDigest: enterpriseCallsDigest(state.enterpriseCalls.map((entry) => entry.call)),
       })
     );
-  for (const entry of state.enterpriseCalls || []) {
-    if (!state.enterpriseCalls?.some((sibling) => sibling.signature)) continue;
+  if (!state.enterpriseCalls?.some((entry) => entry.signature)) return;
+  const callsDigest = enterpriseCallsDigest(state.enterpriseCalls.map((entry) => entry.call));
+  const groupIds = state.enterpriseCalls.map((entry) => entry.call.id);
+  for (const entry of state.enterpriseCalls) {
     storeEnterpriseSignature(
       enterpriseReplayKey(
         state.signatureNamespace,
@@ -959,8 +957,8 @@ export function captureAgyEnterpriseReplayParts(
           version: 2,
           identity: hashCall(entry.call),
           ...(entry.signature ? { signature: entry.signature } : { kind: "native-unsigned-call" }),
-          callsDigest: enterpriseCallsDigest(state.enterpriseCalls.map((sibling) => sibling.call)),
-          groupIds: state.enterpriseCalls.map((sibling) => sibling.call.id),
+          callsDigest,
+          groupIds,
           nativePart: entry.nativePart,
           optionalDefaults: entry.optionalDefaults,
         })

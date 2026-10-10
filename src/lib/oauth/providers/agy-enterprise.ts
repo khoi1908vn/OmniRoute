@@ -3,6 +3,13 @@ import { sanitizeErrorMessage, sanitizeUpstreamDetails } from "@omniroute/open-s
 import { AGY_ENTERPRISE_CONFIG } from "../constants/oauth";
 import { buildAntigravityAuthUrl } from "./antigravity";
 
+const tokenSchema = z.object({
+  access_token: z.string().min(1),
+  refresh_token: z.string().min(1).optional(),
+  expires_in: z.number().positive().finite(),
+  scope: z.string().optional(),
+});
+
 export const agyEnterprise = {
   config: AGY_ENTERPRISE_CONFIG,
   flowType: "authorization_code_pkce" as const,
@@ -55,14 +62,7 @@ export const agyEnterprise = {
     }
   },
   mapTokens: (raw: unknown) => {
-    const tokens = z
-      .object({
-        access_token: z.string().min(1),
-        refresh_token: z.string().min(1).optional(),
-        expires_in: z.number().positive().finite(),
-        scope: z.string().optional(),
-      })
-      .parse(raw);
+    const tokens = tokenSchema.parse(raw);
     return {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,

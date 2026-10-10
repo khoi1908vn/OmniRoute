@@ -16,7 +16,7 @@ const {
   __agePendingForceRefreshMissForTests,
   __resetGenericQuotaFetcherForTests,
 } = genericModule;
-const { getQuotaFetcher, preflightQuota } = preflightModule;
+const { getQuotaFetcher, getQuotaWindows, preflightQuota } = preflightModule;
 
 test.after(() => resetDbInstance());
 
@@ -240,6 +240,29 @@ test("fetchGenericQuota caches a hit inside the 60s window", async () => {
   assert.equal(first?.percentUsed, 0.2);
   assert.deepEqual(second, first);
   invalidateGenericQuotaCache("agy", connectionId);
+});
+
+test("model-scoped quota fetch preserves the full provider window catalog", async () => {
+  const quotas = {
+    "gemini-3-flash": { remainingPercentage: 80 },
+    "claude-sonnet-4": { remainingPercentage: 20 },
+    gemini_weekly: { remainingPercentage: 90 },
+    claude_gpt_weekly: { remainingPercentage: 30 },
+  };
+  __setGenericUsageFetcherForTests(async () => ({ quotas }));
+  for (const provider of ["agy", "glm"]) {
+    const id = `catalog-${provider}`;
+    const quota = await fetchGenericQuota(id, {
+      provider,
+      id,
+      requestedModel: "gemini-3-flash",
+    });
+    assert.deepEqual(
+      Object.keys(quota!.windows!),
+      provider === "agy" ? ["gemini-3-flash", "gemini_weekly"] : Object.keys(quotas)
+    );
+    assert.deepEqual(getQuotaWindows(provider), Object.keys(quotas));
+  }
 });
 
 test("invalidateGenericQuotaCache makes the next fetch bypass provider-inner usage caches", async () => {

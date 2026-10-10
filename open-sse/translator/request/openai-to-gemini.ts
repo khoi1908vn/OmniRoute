@@ -452,6 +452,9 @@ function openaiToGeminiBase(
         }
       } else if (role === "assistant") {
         const parts: GeminiPart[] = [];
+        const enterpriseHistory = toolNameOptions.agyEnterprise
+          ? normalizeAgyEnterpriseContents(result.contents)
+          : [];
 
         // Thinking/reasoning → thought part with signature
         if (msg.reasoning_content) {
@@ -478,7 +481,7 @@ function openaiToGeminiBase(
                     name: sanitizeToolName(call.function.name),
                     args: parseEnterpriseArguments(call.function.arguments),
                   })),
-                  normalizeAgyEnterpriseContents(result.contents)
+                  enterpriseHistory
                 )
               : null;
             if (toolNameOptions.agyEnterprise && !replay)
@@ -487,7 +490,7 @@ function openaiToGeminiBase(
                   toolNameOptions.signatureNamespace,
                   "text",
                   text,
-                  normalizeAgyEnterpriseContents(result.contents)
+                  enterpriseHistory
                 )
               );
             parts.push({
@@ -522,7 +525,7 @@ function openaiToGeminiBase(
                     ),
                   },
                   enterpriseCalls,
-                  normalizeAgyEnterpriseContents(result.contents)
+                  enterpriseHistory
                 )
               : null;
             const replay = replayResolution?.ok ? replayResolution.replay : null;
@@ -532,7 +535,7 @@ function openaiToGeminiBase(
                   toolNameOptions.signatureNamespace,
                   "call",
                   id,
-                  normalizeAgyEnterpriseContents(result.contents),
+                  enterpriseHistory,
                   replayResolution
                 )
               );
@@ -577,7 +580,7 @@ function openaiToGeminiBase(
             // inert text/context (#3358). The Antigravity/CLI bypass path
             // (supportsSignatureBypass) instead emits native parts carrying the
             // skip_thought_signature_validator sentinel below.
-            if (!toolNameOptions.agyEnterprise && !toolNameOptions.supportsSignatureBypass) {
+            if (!toolNameOptions.supportsSignatureBypass) {
               if (!signatureForToolCall && contextualizeSignaturelessToolResponses) {
                 if (!toolCallIds.includes(id)) toolCallIds.push(id);
               }
@@ -629,7 +632,6 @@ function openaiToGeminiBase(
             if (
               toolNameOptions.supportsSignatureBypass ||
               !contextualizeSignaturelessToolResponses ||
-              toolNameOptions.agyEnterprise ||
               signatureForToolCall
             ) {
               toolCallIds.push(id);

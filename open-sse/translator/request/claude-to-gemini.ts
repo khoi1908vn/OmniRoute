@@ -370,7 +370,7 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
               signatureNamespace,
               text,
               parts.filter((part) => part.functionCall).map((part) => part.functionCall),
-              normalizeAgyEnterpriseContents(result.contents)
+              enterpriseHistory
             );
             if (!replay)
               missingAgyEnterpriseReplay(

@@ -96,17 +96,6 @@ export default function QuotaCard({
     [connection.provider, rawQuotas, quotaVisibility]
   );
   const cardStatus = useMemo<CardStatus>(() => worstStatus(quotas), [quotas]);
-  const tierMeta = useMemo(
-    () =>
-      normalizePlanTier(
-        resolvePlanValue(
-          quota?.plan ?? null,
-          connection.providerSpecificData ?? null,
-          connection.provider
-        )
-      ),
-    [quota?.plan, connection.providerSpecificData, connection.provider]
-  );
   const resolvedPlan = useMemo(
     () =>
       resolvePlanValue(
@@ -116,6 +105,7 @@ export default function QuotaCard({
       ),
     [quota?.plan, connection.providerSpecificData, connection.provider]
   );
+  const tierMeta = useMemo(() => normalizePlanTier(resolvedPlan), [resolvedPlan]);
   const accountLabel = useMemo(
     () =>
       pickDisplayValue(
